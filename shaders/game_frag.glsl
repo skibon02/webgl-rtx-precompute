@@ -215,11 +215,11 @@ vec3 addDirectLight(Intersection intersection) {
     for (int i = 0; i < numSpheres; i++) {
         Sphere sphere = spheres[i];
         if (sphere.material.emission.x > 0.0) {
-            vec3 lightDir = normalize(sphere.center + vec3(0.0, -15.2, 0.0) - intersection.position);
+            vec3 lightDir = normalize(sphere.center + vec3(0.0, -15.08, 0.0) - intersection.position);
             float lightDistance = length(sphere.center - intersection.position);
             float lightAngle = dot(lightDir, intersection.normal); // cos
             if (lightAngle > 0.0) {
-                float inclusionFactor = 0.15;
+                float inclusionFactor = 0.1;
                 color += sphere.material.emission * lightAngle * inclusionFactor;
                 Ray shadowRay = Ray(intersection.position, lightDir);
                 Intersection shadowIntersection = intersect(shadowRay);
@@ -350,6 +350,8 @@ void main() {
     col *=  finalLumScale;
     vec2 texCoord = pos * 0.5 + 0.5;
     //vec4 oldCol = texture(u_prev_frame, texCoord);
+    //gamma correction
+    col = pow(col, vec3(1.0 / 2.2));
     outColor = vec4(col, 1.0);
 
 }

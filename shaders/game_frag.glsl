@@ -7,6 +7,13 @@ in vec2 pos;
 uniform vec2 u_resolution;
 uniform float u_seed;
 
+const int ChunkSize = 16;
+
+
+uniform int u_blocks[ChunkSize*ChunkSize*ChunkSize];
+uniform sampler2D u_texture;
+
+
 const float PI = 3.1415926535897932384626433832795;
 const float eps = 1e-5;
 
@@ -21,6 +28,9 @@ struct Material {
     float albedoFactor;
     bool isGlass;
 };
+
+Material[50] materials;
+Material cubeMaterial = Material(vec3(0.5, 0.5, 0.5), vec3(0.0, 0.0, 0.0), 0.5, 0.8, true);
 
 struct Sphere {
     vec3 center;
@@ -40,6 +50,11 @@ struct Cube {
     Material material;
 };
 
+struct PointLight {
+    vec3 position;
+    vec3 power;
+};
+
 struct Intersection {
     vec3 position;
     vec3 normal;
@@ -55,6 +70,17 @@ struct Ray {
 
 float random(vec3 scale, float seed) {
     return fract(sin(dot(gl_FragCoord.xyz + seed, scale)) * 43758.5453 + seed);
+}
+
+void createCoordinateSystem(vec3 normal, out vec3 tangent, out vec3 bitangent) {
+    if (abs(normal.x) > abs(normal.z)) {
+        float invLen = 1.0 / sqrt(normal.x * normal.x + normal.y * normal.y);
+        tangent = vec3(-normal.y * invLen, normal.x * invLen, 0.0);
+    } else {
+        float invLen = 1.0 / sqrt(normal.y * normal.y + normal.z * normal.z);
+        tangent = vec3(0.0, -normal.z * invLen, normal.y * invLen);
+    }
+    bitangent = cross(normal, tangent);
 }
 
 //Scene
@@ -124,6 +150,11 @@ Cube cubes[numCubes] = Cube[](
             vec3(0.0), 0.1, 0.7, true))
 );
 
+const int numPointLights = 1;
+PointLight pointLights[numPointLights] = PointLight[](
+    PointLight(vec3(0, 2.4, -1), vec3(50000.0, 40000.0, 45000.0))
+);
+
 
 
 Intersection intersect(Ray ray) {
@@ -168,8 +199,9 @@ Intersection intersect(Ray ray) {
         }
     }
 
-    for (int i = 0; i < numCubes; i++) {
-        Cube cube = cubes[i];
+    for (int i = 0; i < 32; i++) {
+        vec3 offs = vec3(-1.5, -1.5, -5.5);
+        Cube cube = Cube(vec3(i) + offs, vec3(i + 1) + offs, cubeMaterial);
 
         vec3 invDir = 1.0 / ray.dir;
         vec3 tbot = invDir * (cube.min - ray.origin);
@@ -212,22 +244,19 @@ Intersection intersect(Ray ray) {
 
 vec3 addDirectLight(Intersection intersection) {
     vec3 color = vec3(0.0);
-    for (int i = 0; i < numSpheres; i++) {
-        Sphere sphere = spheres[i];
-        if (sphere.material.emission.x > 0.0) {
-            vec3 lightDir = normalize(sphere.center + vec3(0.0, -15.08, 0.0) - intersection.position);
-            float lightDistance = length(sphere.center - intersection.position);
-            float lightAngle = dot(lightDir, intersection.normal); // cos
-            if (lightAngle > 0.0) {
-                float inclusionFactor = 0.1;
-                color += sphere.material.emission * lightAngle * inclusionFactor;
-                Ray shadowRay = Ray(intersection.position, lightDir);
-                Intersection shadowIntersection = intersect(shadowRay);
-                if (shadowIntersection.distance < 0.0 || shadowIntersection.distance > lightDistance) {
-                    color = sphere.material.emission * lightAngle;
-                }
-            }
+    vec3 tan, bitan;
+    createCoordinateSystem(intersection.normal, tan, bitan);
+    for (int i = 0; i < numPointLights; i++) {
+        PointLight pointLight = pointLights[i];
+        vec3 lightDir = normalize(pointLight.position - intersection.position);
+        float lightDistance = length(pointLight.position - intersection.position);
+        float lightIntensity = 1.0 / (lightDistance * lightDistance);
+        Ray shadowRay = Ray(intersection.position + intersection.normal * eps, lightDir);
+        Intersection shadowIntersection = intersect(shadowRay);
+        if (shadowIntersection.distance < 0.0 || shadowIntersection.distance > lightDistance) {
+            color += pointLight.power * max(dot(lightDir, intersection.normal), 0.0) * lightIntensity;
         }
+
     }
     return color;
 }
@@ -349,9 +378,7 @@ void main() {
     col /= float(samples_n);
     col *=  finalLumScale;
     vec2 texCoord = pos * 0.5 + 0.5;
-    //vec4 oldCol = texture(u_prev_frame, texCoord);
     //gamma correction
     col = pow(col, vec3(1.0 / 2.2));
     outColor = vec4(col, 1.0);
-
 }

@@ -1,4 +1,5 @@
 let gl;
+const Chunk_Size = 16;
 class Prog {
     constructor(name) {
         this.name = name;
@@ -97,7 +98,6 @@ class App {
         if (!gl) {
             return alert('No webGL :(');
         }
-            
         
         // gl.enable(gl.BLEND);
         // gl.blendFunc(gl.ONE, gl.ONE);
@@ -106,6 +106,33 @@ class App {
         let editor_prog = new Prog("game");
         await editor_prog.initProgram();
         gl.uniform2f(editor_prog.u_("resolution"), gl.canvas.width, gl.canvas.height);
+        
+        this.blocks = new Array(Chunk_Size * Chunk_Size * Chunk_Size);
+        this.blocks.fill(-1);
+        this.blocks[0] = 0;
+        this.blocks[1] = 1;
+
+        gl.uniform1iv(editor_prog.u_("u_blocks"), new Int16Array(this.blocks));
+
+        //create 2x2 float texture from array
+        this.tex = gl.createTexture();
+        gl.bindTexture(gl.TEXTURE_2D, this.tex);
+        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA32F, 2, 2, 0, gl.RGBA, gl.FLOAT, new Float32Array([
+            1, 0, 0, 1,
+            0, 1, 0, 1,
+            0, 0, 1, 1,
+            1, 1, 1, 1,
+        ]));
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR); 
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+
+
+        gl.uniform1f(editor_prog.u_("u_texture"), 0);
+        
+
+
         this.programs.push(editor_prog);
         
         //setup the viewport

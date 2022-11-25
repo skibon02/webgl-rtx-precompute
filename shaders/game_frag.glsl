@@ -108,7 +108,7 @@ void createCoordinateSystem(vec3 normal, out vec3 tangent, out vec3 bitangent) {
 
 const int numPointLights = 1;
 PointLight pointLights[numPointLights] = PointLight[](
-    PointLight(vec3(5, 2.4, -1), vec3(50000.0, 40000.0, 45000.0))
+    PointLight(vec3(7, 2.4, 7), vec3(50000.0, 40000.0, 45000.0))
 );
 
 
@@ -149,42 +149,58 @@ Intersection intersect(Ray ray) {
     float tNear = max(max(t1.x, t1.y), t1.z);
     float tFar = min(min(t2.x, t2.y), t2.z);
 
+
+    vec3 dirmask;
     if (tNear < tFar && tFar > eps) {
-        float t = 0.0;
-        vec3 pos = ray.origin;
-        if(tNear > eps) {
-            t = tNear - 0.01;
-            pos = ray.origin + ray.dir * t;
-        }
+        float t = tNear;
+        if(tNear < eps)
+            t = 0.0;
+        vec3 pos = ray.origin + ray.dir * t;
+        vec3 stepdir = sign(ray.dir);
 
-        vec3 step = sign(ray.dir);
 
-        while(true) {
-            vec3 dists = abs(pos - floor(pos + step)) * rayDirInv;
-            float next = min(min(dists.x, dists.y), dists.z);
-            t += next;
-            pos += ray.dir * next;
+        int count = 0;
+        while(t < tFar - eps) {
+            dirmask = vec3(0.0, 0.0, 0.0);
 
-            if (t >= tFar) {
+            vec3 t1 = vec3(0.0);
+            if(stepdir.x > 0.0) {
+                t1.x = (ceil(pos.x + eps) - pos.x) * rayDirInv.x;
+            } else {
+                t1.x = (floor(pos.x - eps) - pos.x) * rayDirInv.x;
+            }
+            if(stepdir.y > 0.0) {
+                t1.y = (ceil(pos.y + eps) - pos.y) * rayDirInv.y;
+            } else {
+                t1.y = (floor(pos.y - eps) - pos.y) * rayDirInv.y;
+            }
+            if(stepdir.z > 0.0) {
+                t1.z = (ceil(pos.z + eps) - pos.z) * rayDirInv.z;
+            } else {
+                t1.z = (floor(pos.z - eps) - pos.z) * rayDirInv.z;
+            }
+
+            float mint = min(t1.x, min(t1.y, t1.z));
+            if(mint == t1.x) dirmask.x = 1.0;
+            else
+                if(mint == t1.y) dirmask.y = 1.0;
+                else
+                    if(mint == t1.z) dirmask.z = 1.0;
+            t += mint;
+            pos += ray.dir * mint;
+
+            vec3 blockpos = floor(pos + eps*ray.dir);
+
+            int block = u_blocks[int(blockpos.x) + int(blockpos.z) * Chunk_Size + int(blockpos.y) * Chunk_Size * Chunk_Size];
+
+            if (block != -1) {
+                intersection.distance = t;
+                intersection.position = pos;
+                intersection.normal = vec3(0.0, 0.0, -1.0);
+                intersection.material = u_materials[block];
                 break;
             }
-
-            if (pos.x < 0.0 || pos.x >= float(Chunk_Size) || pos.y < 0.0 || pos.y >= float(Chunk_Size) || pos.z < 0.0 || pos.z >= float(Chunk_Size)) {
-                break;
-            }
-
-            int index = int(pos.x) + int(pos.z) * Chunk_Size + int(pos.y) * Chunk_Size * Chunk_Size;
-            if (index >= 0 && index < Chunk_Size * Chunk_Size * Chunk_Size) {
-                if (u_blocks[index] >= 0) {
-                    Material material = u_materials[u_blocks[index]];
-                    intersection.distance = t;
-                    intersection.position = pos;
-                    intersection.normal = vec3(0.0, 0.0, -1.0);
-                    intersection.material = material;
-                    break;
-                }
-            }
-
+            count++;
         }
     }
 

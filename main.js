@@ -131,9 +131,11 @@ class App {
             for(let j = 0; j < Chunk_Size; j++) {
                 if(i % 2 == j % 2) {
                     this.blocks[i + j * Chunk_Size] = 1;
+                    this.blocks[i + j * Chunk_Size*Chunk_Size] = 1;
                 }
                 else {
                     this.blocks[i + j * Chunk_Size] = 0;
+                    this.blocks[i + j * Chunk_Size*Chunk_Size] = 0;
                 }
             }
         }
@@ -143,7 +145,7 @@ class App {
         gl.uniform3fv(editor_prog.u_("materials[0].albedo"), new Float32Array([0.2, 0.8, 0.8]));
         gl.uniform1fv(editor_prog.u_("materials[1].albedoFactor"), new Float32Array([0.6]));
         gl.uniform3fv(editor_prog.u_("materials[1].albedo"), new Float32Array([0.8, 0.2, 0.8]));
-        gl.uniform1f(editor_prog.u_("materials[1].reflectivity"), 0.0);
+        gl.uniform1f(editor_prog.u_("materials[1].reflectivity"), 0.5);
 
         //create 2x2 float texture from array
         this.tex = gl.createTexture();

@@ -4,14 +4,26 @@ precision highp float;
 
 in vec2 pos;
 
+const int Chunk_Size = 15;
+
+
+uniform int u_blocks[Chunk_Size*Chunk_Size*Chunk_Size];
 uniform vec2 u_resolution;
 uniform float u_seed;
 
-const int ChunkSize = 16;
+uniform vec3 u_cameraPos;
+uniform vec3 u_cameraVec;
+struct Material {
+    vec3 albedo;
+    vec3 emission;
+    float reflectivity;
+    float albedoFactor;
+    float isGlass;
+};
 
+uniform Material[100] u_materials;
 
-uniform int u_blocks[ChunkSize*ChunkSize*ChunkSize];
-uniform sampler2D u_texture;
+// uniform sampler2D u_texture;
 
 
 const float PI = 3.1415926535897932384626433832795;
@@ -21,26 +33,10 @@ float cur_seed;
 
 out vec4 outColor;
 
-struct Material {
-    vec3 albedo;
-    vec3 emission;
-    float reflectivity;
-    float albedoFactor;
-    bool isGlass;
-};
-
-Material[50] materials;
-Material cubeMaterial = Material(vec3(0.5, 0.5, 0.5), vec3(0.0, 0.0, 0.0), 0.5, 0.8, true);
 
 struct Sphere {
     vec3 center;
     float radius;
-    Material material;
-};
-
-struct Plane {
-    vec3 normal;
-    float distance;
     Material material;
 };
 
@@ -83,76 +79,36 @@ void createCoordinateSystem(vec3 normal, out vec3 tangent, out vec3 bitangent) {
     bitangent = cross(normal, tangent);
 }
 
-//Scene
-const int numSpheres = 4;
-Sphere spheres[numSpheres] = Sphere[](
-    //metal
-    Sphere(vec3(-0.75, -1.45, -4.4), 1.05, 
-    Material(
-        vec3(0.8, 0.4, 0.8), 
-        vec3(0.0), 1.0, 0.8, false)),
+// //Scene
+// const int numSpheres = 4;
+// Sphere spheres[numSpheres] = Sphere[](
+//     //metal
+//     Sphere(vec3(-0.75, -1.45, -4.4), 1.05, 
+//     Material(
+//         vec3(0.8, 0.4, 0.8), 
+//         vec3(0.0), 1.0, 0.8, false)),
 
-    //glass
-    Sphere(vec3(2.0, -2.05, -3.7), 0.5, 
-    Material(
-        vec3(0.9, 1.0, 0.8), 
-        vec3(0.0), 0.0, 0.8, true)),
+//     //glass
+//     Sphere(vec3(2.0, -2.05, -3.7), 0.5, 
+//     Material(
+//         vec3(0.9, 1.0, 0.8), 
+//         vec3(0.0), 0.0, 0.8, true)),
 
-    Sphere(vec3(-1.75, -1.95, -3.1), 0.6, 
-    Material(
-        vec3(1, 1, 1), 
-        vec3(0.0), 0.0, 0.8, false)),
+//     Sphere(vec3(-1.75, -1.95, -3.1), 0.6, 
+//     Material(
+//         vec3(1, 1, 1), 
+//         vec3(0.0), 0.0, 0.8, false)),
 
-    //light
-    Sphere(vec3(0, 17.8, -1), 15.0, 
-        Material(
-            vec3(0.0, 0.0, 0.0), 
-            vec3(50000.0, 40000.0, 45000.0), 0.0, 0.8, false))
-);
-
-const int numPlanes = 6;
-Plane planes[numPlanes] = Plane[](
-    Plane(vec3(0, 1, 0), 2.5, 
-        Material(
-            vec3(0.9, 0.9, 0.9), 
-            vec3(0.0), 0.6, 0.8, false)),
-    Plane(vec3(0, -1, 0), 3.0,
-        Material(
-            vec3(0.9, 0.9, 0.9), 
-            vec3(0.0), 0.0, 0.8, false)),
-
-    //Left / Right
-    Plane(vec3(1, 0, 0), 2.75,
-        Material(
-            vec3(1, 0.1, 0.1), 
-            vec3(0.0), 0.4, 0.8, false)),
-    Plane(vec3(-1, 0, 0), 2.75,
-        Material(
-            vec3(0.1, 1, 0.1), 
-            vec3(0.0), 0.0, 0.8, false)),
-
-    //Back / Front
-    Plane(vec3(0, 0, 1), 6.0,
-        Material(
-            vec3(0.8, 0.8, 0.5), 
-            vec3(0.0), 1.0, 0.6, false)),
-    Plane(vec3(0, 0, -1), 0.5,
-        Material(
-            vec3(0.9, 0.9, 0.9), 
-            vec3(0.0), 0.0, 0.8, false))
-);
-
-const int numCubes = 1;
-Cube cubes[numCubes] = Cube[](
-    Cube(vec3(2.4, 1.0, -4.5), vec3(2.6, 1.8, -3.5),
-        Material(
-            vec3(0.6, 0.6, 0.9), 
-            vec3(0.0), 0.1, 0.7, true))
-);
+//     //light
+//     Sphere(vec3(0, 17.8, -1), 15.0, 
+//         Material(
+//             vec3(0.0, 0.0, 0.0), 
+//             vec3(50000.0, 40000.0, 45000.0), 0.0, 0.8, false))
+// );
 
 const int numPointLights = 1;
 PointLight pointLights[numPointLights] = PointLight[](
-    PointLight(vec3(0, 2.4, -1), vec3(50000.0, 40000.0, 45000.0))
+    PointLight(vec3(5, 2.4, -1), vec3(50000.0, 40000.0, 45000.0))
 );
 
 
@@ -161,84 +117,119 @@ Intersection intersect(Ray ray) {
     Intersection intersection;
     intersection.distance = -1.0;
 
-    for (int i = 0; i < numSpheres; i++) {
-        Sphere sphere = spheres[i];
+    // for (int i = 0; i < numSpheres; i++) {
+    //     Sphere sphere = spheres[i];
 
-        vec3 oc = ray.origin - sphere.center;
-        float b = dot(oc, ray.dir);
-        float c = dot(oc, oc) - sphere.radius * sphere.radius;
-        float h = b * b - c;
+    //     vec3 oc = ray.origin - sphere.center;
+    //     float b = dot(oc, ray.dir);
+    //     float c = dot(oc, oc) - sphere.radius * sphere.radius;
+    //     float h = b * b - c;
 
-        if (h >= 0.0) {
-            float h = sqrt(h);
-            float t = -b - h;
-            if(t < eps)
-                t = -b + h;
+    //     if (h >= 0.0) {
+    //         float h = sqrt(h);
+    //         float t = -b - h;
+    //         if(t < eps)
+    //             t = -b + h;
             
-            if (t >= eps && (intersection.distance < 0.0 || t < intersection.distance)) {
-                intersection.distance = t;
-                intersection.position = ray.origin + ray.dir * t;
-                intersection.normal = normalize(intersection.position - sphere.center);
-                intersection.material = sphere.material;
+    //         if (t >= eps && (intersection.distance < 0.0 || t < intersection.distance)) {
+    //             intersection.distance = t;
+    //             intersection.position = ray.origin + ray.dir * t;
+    //             intersection.normal = normalize(intersection.position - sphere.center);
+    //             intersection.material = sphere.material;
+    //         }
+    //     }
+    // }
+
+    // check collision with 3d grid
+    vec3 rayDirInv = 1.0 / ray.dir;
+    vec3 tMin = (vec3(0.0) - ray.origin) * rayDirInv;
+    vec3 tMax = (vec3(Chunk_Size) - ray.origin) * rayDirInv;
+    vec3 t1 = min(tMin, tMax);
+    vec3 t2 = max(tMin, tMax);
+    float tNear = max(max(t1.x, t1.y), t1.z);
+    float tFar = min(min(t2.x, t2.y), t2.z);
+
+    if (tNear < tFar && tFar > eps) {
+        float t = 0.0;
+        vec3 pos = ray.origin;
+        if(tNear > eps) {
+            t = tNear - 0.01;
+            pos = ray.origin + ray.dir * t;
+        }
+
+        vec3 step = sign(ray.dir);
+
+        while(true) {
+            vec3 dists = abs(pos - floor(pos + step)) * rayDirInv;
+            float next = min(min(dists.x, dists.y), dists.z);
+            t += next;
+            pos += ray.dir * next;
+
+            if (t >= tFar) {
+                break;
             }
+
+            if (pos.x < 0.0 || pos.x >= float(Chunk_Size) || pos.y < 0.0 || pos.y >= float(Chunk_Size) || pos.z < 0.0 || pos.z >= float(Chunk_Size)) {
+                break;
+            }
+
+            int index = int(pos.x) + int(pos.z) * Chunk_Size + int(pos.y) * Chunk_Size * Chunk_Size;
+            if (index >= 0 && index < Chunk_Size * Chunk_Size * Chunk_Size) {
+                if (u_blocks[index] >= 0) {
+                    Material material = u_materials[u_blocks[index]];
+                    intersection.distance = t;
+                    intersection.position = pos;
+                    intersection.normal = vec3(0.0, 0.0, -1.0);
+                    intersection.material = material;
+                    break;
+                }
+            }
+
         }
     }
 
-    for (int i = 0; i < numPlanes; i++) {
-        Plane plane = planes[i];
+    // for (int i = 0; i < Chunk_Size* 3; i++) {
+    //     if(u_blocks[i] == -1)
+    //         continue;
+    //     vec3 pos = vec3(i%Chunk_Size, i / Chunk_Size / Chunk_Size, i / Chunk_Size % Chunk_Size);
+    //     Cube cube = Cube(pos, pos + vec3(1.0), u_materials[u_blocks[i]]);
 
-        float denom = dot(ray.dir, plane.normal);
-        if (abs(denom) > 0.0001) {
-            float t = -(dot(ray.origin, plane.normal) + plane.distance) / denom;
-            if (t >= eps && (intersection.distance < 0.0 || t < intersection.distance)) {
-                intersection.distance = t;
-                intersection.position = ray.origin + ray.dir * t;
-                intersection.normal = plane.normal;
-                intersection.material = plane.material;
-            }
-        }
-    }
+    //     vec3 invDir = 1.0 / ray.dir;
+    //     vec3 tbot = invDir * (cube.min - ray.origin);
+    //     vec3 ttop = invDir * (cube.max - ray.origin);
 
-    for (int i = 0; i < 32; i++) {
-        vec3 offs = vec3(-1.5, -1.5, -5.5);
-        Cube cube = Cube(vec3(i) + offs, vec3(i + 1) + offs, cubeMaterial);
+    //     vec3 tmin = min(ttop, tbot);
+    //     vec3 tmax = max(ttop, tbot);
 
-        vec3 invDir = 1.0 / ray.dir;
-        vec3 tbot = invDir * (cube.min - ray.origin);
-        vec3 ttop = invDir * (cube.max - ray.origin);
+    //     float t0 = max(max(tmin.x, tmin.y), tmin.z);
+    //     float t1 = min(min(tmax.x, tmax.y), tmax.z);
 
-        vec3 tmin = min(ttop, tbot);
-        vec3 tmax = max(ttop, tbot);
-
-        float t0 = max(max(tmin.x, tmin.y), tmin.z);
-        float t1 = min(min(tmax.x, tmax.y), tmax.z);
-
-        if (t0 < t1 && t1 >= eps) {
-            float t = t0;
-            if (t < eps)
-                t = t1;
-            if (t >= eps && (intersection.distance < 0.0 || t < intersection.distance)) {
-                intersection.distance = t;
-                intersection.position = ray.origin + ray.dir * t;
-                //calculate normal
-                vec3 n = vec3(0.0);
-                if (abs(intersection.position.x - cube.min.x) < eps)
-                    n.x = -1.0;
-                else if (abs(intersection.position.x - cube.max.x) < eps)
-                    n.x = 1.0;
-                else if (abs(intersection.position.y - cube.min.y) < eps)
-                    n.y = -1.0;
-                else if (abs(intersection.position.y - cube.max.y) < eps)
-                    n.y = 1.0;
-                else if (abs(intersection.position.z - cube.min.z) < eps)
-                    n.z = -1.0;
-                else if (abs(intersection.position.z - cube.max.z) < eps)
-                    n.z = 1.0;
-                intersection.normal = n;
-                intersection.material = cube.material;
-            }
-        }
-    }
+    //     if (t0 < t1 && t1 >= eps) {
+    //         float t = t0;
+    //         if (t < eps)
+    //             t = t1;
+    //         if (t >= eps && (intersection.distance < 0.0 || t < intersection.distance)) {
+    //             intersection.distance = t;
+    //             intersection.position = ray.origin + ray.dir * t;
+    //             //calculate normal
+    //             vec3 n = vec3(0.0);
+    //             if (abs(intersection.position.x - cube.min.x) < eps)
+    //                 n.x = -1.0;
+    //             else if (abs(intersection.position.x - cube.max.x) < eps)
+    //                 n.x = 1.0;
+    //             else if (abs(intersection.position.y - cube.min.y) < eps)
+    //                 n.y = -1.0;
+    //             else if (abs(intersection.position.y - cube.max.y) < eps)
+    //                 n.y = 1.0;
+    //             else if (abs(intersection.position.z - cube.min.z) < eps)
+    //                 n.z = -1.0;
+    //             else if (abs(intersection.position.z - cube.max.z) < eps)
+    //                 n.z = 1.0;
+    //             intersection.normal = n;
+    //             intersection.material = cube.material;
+    //         }
+    //     }
+    // }
     return intersection;
 }
 
@@ -286,7 +277,7 @@ vec3 pathTrace(Ray ray) {
             lightColor = intersection.material.emission;
             break;
         } else {
-            if(intersection.material.isGlass) {
+            if(intersection.material.isGlass == 1.0) {
                 float n = 1.5;
                 float R0 = (1.0 - n) / (1.0 + n);
                 R0 = R0 * R0;
@@ -356,9 +347,16 @@ void main() {
     if(u_resolution.y > u_resolution.x) {
         fovscale *= u_resolution.y / u_resolution.x;
     }
-    ray.dir = vec3(0.0, 0.0, -1.0) + vec3(pos.x*(u_resolution.x / u_resolution.y), pos.y, 0.0) * fovscale;
+    //get vector from angles
+    
+    vec3 top = vec3(0.0, 1.0, 0.0);
+    vec3 right = normalize(cross(u_cameraVec, top));
+    top = normalize(cross(right, u_cameraVec));
+    ray.dir = normalize(u_cameraVec + right * (pos.x * u_resolution.x / u_resolution.y) * fovscale + top * (pos.y) * fovscale);
+
+    //ray.dir = vec3(0.0, 0.0, -1.0) + vec3(pos.x*(u_resolution.x / u_resolution.y), pos.y, 0.0) * fovscale;
     ray.dir = normalize(ray.dir);
-    ray.origin = vec3(0.0, 0.0, 0.0);
+    ray.origin = u_cameraPos;
     vec3 col = vec3(0.0);
     int samples_n = SAMPLES;
     for(int i = 0; i < samples_n; i++) {

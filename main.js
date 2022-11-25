@@ -1,9 +1,14 @@
 let gl;
-const Chunk_Size = 16;
+const Chunk_Size = 15;
+
+function lockError(e){
+    console.log('pointer lock failed');
+}
 class Prog {
     constructor(name) {
         this.name = name;
         this.init = false;
+
     }
     createShader( type, source) {
         var shader = gl.createShader(type);
@@ -76,15 +81,27 @@ class Prog {
 class App {
     constructor() {
         this.programs = [];
+        this.cameraPos = [5.5, 2.5, -2.5];
+        this.camera = [0, 0];
+        this.cameraVec = [0, 0, 1];
+        this.move = [0, 0, 0];
+        this.moveSpeed = 2;
+        this.rotateSenstivity = 0.001;
+
         this.initGraphics();
     }
     async initGraphics() {
         let canvas = document.querySelector("#c");
         this.keydownHandler = this.keydown.bind(this);
         this.keyupHandler = this.keyup.bind(this);
+        this.pointerlockchangeHandler = this.pointerlockchange.bind(this);
+        this.clickHandler = this.click.bind(this);
         window.addEventListener('keydown',this.keydownHandler,false);
         window.addEventListener('keyup',this.keyupHandler,false);
-       
+        document.addEventListener('pointerlockchange', this.pointerlockchangeHandler, false);
+        document.addEventListener('pointerlockerror', lockError, false);
+        canvas.addEventListener('click', this.clickHandler, false);
+
     
         gl = canvas.getContext("webgl2");
         // get required extensions for luminance textures
@@ -109,10 +126,24 @@ class App {
         
         this.blocks = new Array(Chunk_Size * Chunk_Size * Chunk_Size);
         this.blocks.fill(-1);
-        this.blocks[0] = 0;
-        this.blocks[1] = 1;
 
-        gl.uniform1iv(editor_prog.u_("u_blocks"), new Int16Array(this.blocks));
+        for(let i = 0; i < Chunk_Size; i++) {
+            for(let j = 0; j < Chunk_Size; j++) {
+                if(i % 2 == j % 2) {
+                    this.blocks[i + j * Chunk_Size] = 1;
+                }
+                else {
+                    this.blocks[i + j * Chunk_Size] = 0;
+                }
+            }
+        }
+
+        gl.uniform1iv(editor_prog.u_("blocks"), new Int16Array(this.blocks));
+        gl.uniform1fv(editor_prog.u_("materials[0].albedoFactor"), new Float32Array([0.8]));
+        gl.uniform3fv(editor_prog.u_("materials[0].albedo"), new Float32Array([0.2, 0.8, 0.8]));
+        gl.uniform1fv(editor_prog.u_("materials[1].albedoFactor"), new Float32Array([0.6]));
+        gl.uniform3fv(editor_prog.u_("materials[1].albedo"), new Float32Array([0.8, 0.2, 0.8]));
+        gl.uniform1f(editor_prog.u_("materials[1].reflectivity"), 0.0);
 
         //create 2x2 float texture from array
         this.tex = gl.createTexture();
@@ -145,15 +176,71 @@ class App {
         window.requestAnimationFrame(this.draw.bind(this));
     }
     keyup(e){
+        if(e.repeat) return;
+        if(e.key == "d"){
+            this.move[0] = 0;
+        }
+        if(e.key == "a"){
+            this.move[0] = 0;
+        }
+        if(e.key == "w"){
+            this.move[2] = 0;
+        }
+        if(e.key == "s"){
+            this.move[2] = 0;
+        }
         if(e.key == " "){
-            e.preventDefault();
-            //this.clearAfterPass = !this.clearAfterPass;
+            this.move[1] = 0;
+        }
+        if(e.key == "Shift"){
+            this.move[1] = 0;
         }
     }
     keydown(e){
-        if(e.key == " "){
-            e.preventDefault();
+        if(e.repeat) return;
+        if(e.key == "d"){
+            this.move[0] = 1;
         }
+        if(e.key == "a"){
+            this.move[0] = -1;
+        }
+        if(e.key == "w"){
+            this.move[2] = -1;
+        }
+        if(e.key == "s"){
+            this.move[2] = 1;
+        }
+        if(e.key == " "){
+            this.move[1] = 1;
+        }
+        if(e.key == "Shift"){
+            this.move[1] = -1;
+        }
+    }
+
+    pointerlockchange(e) {
+        if (document.pointerLockElement === gl.canvas) {
+            this.mousemoveHandler = this.mousemove.bind(this);
+            document.addEventListener("mousemove", this.mousemoveHandler, false);
+            console.log('locked');
+        } else {
+            document.removeEventListener("mousemove", this.mousemoveHandler, false);
+            console.log('released');
+        }
+    }
+    click() {
+        if(document.pointerLockElement != gl.canvas)
+            gl.canvas.requestPointerLock();
+    }
+    mousemove(e) {
+        this.camera[0] += e.movementX * this.rotateSenstivity;
+        this.camera[1] -= e.movementY * this.rotateSenstivity;
+        if(this.camera[1] > Math.PI/2) this.camera[1] = Math.PI/2;
+        if(this.camera[1] < -Math.PI/2) this.camera[1] = -Math.PI/2;
+
+        this.cameraVec[0] = Math.cos(this.camera[0]) * Math.cos(this.camera[1]);
+        this.cameraVec[1] = Math.sin(this.camera[1]);
+        this.cameraVec[2] = Math.sin(this.camera[0]) * Math.cos(this.camera[1]);
     }
 
 
@@ -187,19 +274,39 @@ class App {
         // console.log('resized');
     }
     draw(timestamp) {  
-        this.lastTimestamp = timestamp;
         if(this.stopped) {
             return;
         }
+        if(!this.lastTimestamp)
+            this.lastTimestamp = timestamp;
 
+        //update
+        let delta = (timestamp - this.lastTimestamp) / 1000 * this.moveSpeed;
+        let top = [0.0, 1.0, 0.0];
+        let right = normalize(cross(this.cameraVec, top));
+        let forward = normalize(cross(right, top));
+        let move = [0, 0, 0];
+        for(let i = 0; i < 3; i++) {
+            move[i] = this.move[0] * right[i] + this.move[1] * top[i] + this.move[2] * forward[i];
+        }
+        for(let i = 0; i < 3; i++) {
+            this.cameraPos[i] += move[i] * delta;
+        }
+
+        //draw
         let program = this.programs[0]
         program.prepareDraw();
         gl.uniform1f(this.programs[0].u_("seed"), Math.random()*timestamp * 1.623426 % 1);
+        gl.uniform3f(this.programs[0].u_("cameraPos"), this.cameraPos[0], this.cameraPos[1], this.cameraPos[2]);
+        gl.uniform3f(this.programs[0].u_("cameraVec"), this.cameraVec[0], this.cameraVec[1], this.cameraVec[2]);
+        
 
         gl.drawArrays(gl.TRIANGLES, 0, 6);
 
+
         // setTimeout(() => {
         window.requestAnimationFrame(this.draw.bind(this));
+        this.lastTimestamp = timestamp;
         // }, 60);
     }
 

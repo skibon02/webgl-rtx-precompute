@@ -127,25 +127,27 @@ class App {
         this.blocks = new Array(Chunk_Size * Chunk_Size * Chunk_Size);
         this.blocks.fill(-1);
 
-        for(let i = 0; i < Chunk_Size; i++) {
-            for(let j = 0; j < Chunk_Size; j++) {
-                if(i % 2 == j % 2) {
-                    this.blocks[i + j * Chunk_Size] = 1;
-                    this.blocks[i + j * Chunk_Size*Chunk_Size] = 1;
-                }
-                else {
-                    this.blocks[i + j * Chunk_Size] = 0;
-                    this.blocks[i + j * Chunk_Size*Chunk_Size] = 0;
+        for(let i = 1; i < Chunk_Size-1; i++) {
+            for(let j = 1; j < Chunk_Size-1; j++) {
+                for(let k = 1; k < Chunk_Size-1; k++) {
+                    if(Math.random() > 0.66) {
+                        if(Math.random() > 0.5) {
+                            this.blocks[i + j * Chunk_Size + k * Chunk_Size * Chunk_Size] = 1;
+                        } else {
+                            this.blocks[i + j * Chunk_Size + k * Chunk_Size * Chunk_Size] = 0;
+                        }
+                    }
+                    
                 }
             }
         }
 
         gl.uniform1iv(editor_prog.u_("blocks"), new Int16Array(this.blocks));
         gl.uniform1fv(editor_prog.u_("materials[0].albedoFactor"), new Float32Array([0.8]));
-        gl.uniform3fv(editor_prog.u_("materials[0].albedo"), new Float32Array([0.2, 0.8, 0.8]));
+        gl.uniform3fv(editor_prog.u_("materials[0].albedo"), new Float32Array([0.6, 0.8, 0.8]));
         gl.uniform1fv(editor_prog.u_("materials[1].albedoFactor"), new Float32Array([0.6]));
-        gl.uniform3fv(editor_prog.u_("materials[1].albedo"), new Float32Array([0.8, 0.2, 0.8]));
-        gl.uniform1f(editor_prog.u_("materials[1].reflectivity"), 0.5);
+        gl.uniform3fv(editor_prog.u_("materials[1].albedo"), new Float32Array([0.2, 0.2, 0.8]));
+        gl.uniform1f(editor_prog.u_("materials[1].reflectivity"), 0.7);
 
         //create 2x2 float texture from array
         this.tex = gl.createTexture();

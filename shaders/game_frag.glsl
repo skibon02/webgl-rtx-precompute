@@ -106,9 +106,13 @@ void createCoordinateSystem(vec3 normal, out vec3 tangent, out vec3 bitangent) {
 //             vec3(50000.0, 40000.0, 45000.0), 0.0, 0.8, false))
 // );
 
-const int numPointLights = 1;
+const int numPointLights = 4;
 PointLight pointLights[numPointLights] = PointLight[](
-    PointLight(vec3(7, 2.4, 7), vec3(50000.0, 40000.0, 45000.0))
+    PointLight(vec3(7, 3.4, -2), vec3(50000.0, 40000.0, 45000.0)),
+    PointLight(vec3(7, 15.4, -2), vec3(10000.0, 40000.0, 45000.0)),
+    PointLight(vec3(-2, 4.4, 9), vec3(40000.0, 10000.0, 45000.0)),
+    PointLight(vec3(7, 6.4, 17), vec3(40000.0, 45000.0, 10000.0))
+    
 );
 
 
@@ -196,7 +200,7 @@ Intersection intersect(Ray ray) {
             if (block != -1) {
                 intersection.distance = t;
                 intersection.position = pos;
-                intersection.normal = vec3(0.0, 0.0, -1.0);
+                intersection.normal = -dirmask * stepdir;
                 intersection.material = u_materials[block];
                 break;
             }
@@ -261,7 +265,7 @@ vec3 addDirectLight(Intersection intersection) {
         Ray shadowRay = Ray(intersection.position + intersection.normal * eps, lightDir);
         Intersection shadowIntersection = intersect(shadowRay);
         if (shadowIntersection.distance < 0.0 || shadowIntersection.distance > lightDistance) {
-            color += pointLight.power * max(dot(lightDir, intersection.normal), 0.0) * lightIntensity;
+            color += pointLight.power * lightIntensity * max(0.0, dot(intersection.normal, lightDir));
         }
 
     }
@@ -336,7 +340,6 @@ vec3 pathTrace(Ray ray) {
                 float reflectFactor = intersection.material.reflectivity;
                 //diffuse
                 vec3 lightEmission = addDirectLight( intersection);
-
 
                 resColor += lightEmission * intersection.material.albedo * intersection.material.albedoFactor * throughput * diffuseFactor / PI;
                 if(reflectFactor == 0.0) {

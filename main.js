@@ -75,54 +75,19 @@ class Prog {
         gl.clearColor(0.0, 0.0, 0.0, 1.0);
         gl.clear(gl.COLOR_BUFFER_BIT);
     }
+    resize() {
+    }
 }
 
-
-class App {
+//real time renderer
+class RTR extends Prog {
     constructor() {
-        this.programs = [];
-        this.cameraPos = [5.5, 2.5, -2.5];
-        this.camera = [0, 0];
-        this.cameraVec = [0, 0, 1];
-        this.move = [0, 0, 0];
-        this.moveSpeed = 2;
-        this.rotateSenstivity = 0.001;
-
-        this.initGraphics();
+        super("game");
     }
-    async initGraphics() {
-        let canvas = document.querySelector("#c");
-        this.keydownHandler = this.keydown.bind(this);
-        this.keyupHandler = this.keyup.bind(this);
-        this.pointerlockchangeHandler = this.pointerlockchange.bind(this);
-        this.clickHandler = this.click.bind(this);
-        window.addEventListener('keydown',this.keydownHandler,false);
-        window.addEventListener('keyup',this.keyupHandler,false);
-        document.addEventListener('pointerlockchange', this.pointerlockchangeHandler, false);
-        document.addEventListener('pointerlockerror', lockError, false);
-        canvas.addEventListener('click', this.clickHandler, false);
 
-    
-        gl = canvas.getContext("webgl2");
-        // get required extensions for luminance textures
-        if (!gl.getExtension('EXT_color_buffer_float')) {
-            return alert('need EXT_color_buffer_float');
-        }
-        if (!gl.getExtension('OES_texture_float_linear')) {
-            return alert('need OES_texture_float_linear');
-        }
-
-        if (!gl) {
-            return alert('No webGL :(');
-        }
-        
-        // gl.enable(gl.BLEND);
-        // gl.blendFunc(gl.ONE, gl.ONE);
-
-        //init shaders
-        let editor_prog = new Prog("game");
-        await editor_prog.initProgram();
-        gl.uniform2f(editor_prog.u_("resolution"), gl.canvas.width, gl.canvas.height);
+    async initProgram() {
+        await super.initProgram();
+        gl.uniform2f(this.u_("resolution"), gl.canvas.width, gl.canvas.height);
         
         this.blocks = new Array(Chunk_Size * Chunk_Size * Chunk_Size);
         this.blocks.fill(-1);
@@ -142,35 +107,145 @@ class App {
             }
         }
 
-        gl.uniform1iv(editor_prog.u_("blocks"), new Int16Array(this.blocks));
-        gl.uniform1fv(editor_prog.u_("materials[0].albedoFactor"), new Float32Array([0.8]));
-        gl.uniform3fv(editor_prog.u_("materials[0].albedo"), new Float32Array([0.6, 0.8, 0.8]));
-        gl.uniform1fv(editor_prog.u_("materials[1].albedoFactor"), new Float32Array([0.6]));
-        gl.uniform3fv(editor_prog.u_("materials[1].albedo"), new Float32Array([0.2, 0.2, 0.8]));
-        gl.uniform1f(editor_prog.u_("materials[1].reflectivity"), 0.7);
+        gl.uniform1iv(this.u_("blocks"), new Int16Array(this.blocks));
+        gl.uniform1fv(this.u_("materials[0].albedoFactor"), new Float32Array([0.8]));
+        gl.uniform3fv(this.u_("materials[0].albedo"), new Float32Array([0.6, 0.8, 0.8]));
+        gl.uniform1fv(this.u_("materials[1].albedoFactor"), new Float32Array([0.6]));
+        gl.uniform3fv(this.u_("materials[1].albedo"), new Float32Array([0.3, 0.2, 0.8]));
+        gl.uniform1f(this.u_("materials[1].reflectivity"), 0.2);
 
-        //create 2x2 float texture from array
-        this.tex = gl.createTexture();
-        gl.bindTexture(gl.TEXTURE_2D, this.tex);
-        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA32F, 2, 2, 0, gl.RGBA, gl.FLOAT, new Float32Array([
-            1, 0, 0, 1,
-            0, 1, 0, 1,
-            0, 0, 1, 1,
-            1, 1, 1, 1,
-        ]));
-        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
-        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR); 
-        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
-        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+        // //create 2x2 float texture from array
+        // this.tex = gl.createTexture();
+        // gl.bindTexture(gl.TEXTURE_2D, this.tex);
+        // gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA32F, 2, 2, 0, gl.RGBA, gl.FLOAT, new Float32Array([
+        //     1, 0, 0, 1,
+        //     0, 1, 0, 1,
+        //     0, 0, 1, 1,
+        //     1, 1, 1, 1,
+        // ]));
+        // gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+        // gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR); 
+        // gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+        // gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
 
 
-        gl.uniform1f(editor_prog.u_("u_texture"), 0);
+        // gl.uniform1f(editor_prog.u_("u_texture"), 0);
+    }
+
+    resize() {
+        gl.uniform2f(this.u_("resolution"), gl.canvas.width, gl.canvas.height);
+    }
+
+    prepareDraw(seed, cameraPos, cameraVec) {
+        super.prepareDraw();
         
+        gl.uniform1f(this.u_("seed"), seed);
+        gl.uniform3f(this.u_("cameraPos"), cameraPos[0], cameraPos[1], cameraPos[2]);
+        gl.uniform3f(this.u_("cameraVec"), cameraVec[0], cameraVec[1], cameraVec[2]);
+    }
+}
+
+class Precomputer extends Prog {
+    constructor() {
+        super("precomputer");
+    }
+
+    async initProgram() {await super.initProgram();
+        gl.uniform2f(this.u_("resolution"), gl.canvas.width, gl.canvas.height);
+        
+        this.blocks = new Array(Chunk_Size * Chunk_Size * Chunk_Size);
+        this.blocks.fill(-1);
+
+        for(let i = 1; i < Chunk_Size-1; i++) {
+            for(let j = 1; j < Chunk_Size-1; j++) {
+                for(let k = 1; k < Chunk_Size-1; k++) {
+                    if(Math.random() > 0.66) {
+                        if(Math.random() > 0.5) {
+                            this.blocks[i + j * Chunk_Size + k * Chunk_Size * Chunk_Size] = 1;
+                        } else {
+                            this.blocks[i + j * Chunk_Size + k * Chunk_Size * Chunk_Size] = 0;
+                        }
+                    }
+                    
+                }
+            }
+        }
+
+        gl.uniform1iv(this.u_("blocks"), new Int16Array(this.blocks));
+        gl.uniform1fv(this.u_("materials[0].albedoFactor"), new Float32Array([0.8]));
+        gl.uniform3fv(this.u_("materials[0].albedo"), new Float32Array([0.6, 0.8, 0.8]));
+        gl.uniform1fv(this.u_("materials[1].albedoFactor"), new Float32Array([0.6]));
+        gl.uniform3fv(this.u_("materials[1].albedo"), new Float32Array([0.3, 0.2, 0.8]));
+        gl.uniform1f(this.u_("materials[1].reflectivity"), 0.2);
+    }
+    prepareDraw(seed, cameraPos, cameraVec) {
+        super.prepareDraw();
+        
+        gl.uniform1f(this.u_("seed"), seed);
+        gl.uniform3f(this.u_("cameraPos"), cameraPos[0], cameraPos[1], cameraPos[2]);
+        gl.uniform3f(this.u_("cameraVec"), cameraVec[0], cameraVec[1], cameraVec[2]);
+    }
+
+    resize() {
+        gl.uniform2f(this.u_("resolution"), gl.canvas.width, gl.canvas.height);
+    }
+}
+    
 
 
+class App {
+    constructor() {
+        this.programs = [];
+        this.currentProgram = 0;
+
+        this.cameraPos = [5.5, 2.5, -2.5];
+        this.cameraVec = [1, 0, 0];
+        //angle of camera
+        this.camera = [0, 0];
+        this.move = [0, 0, 0];
+        
+        this.moveSpeed = 2;
+        this.rotateSenstivity = 0.001;
+
+        this.initGraphics();
+    }
+    async initGraphics() {
+
+        //BIND HANDLERS
+        let canvas = document.querySelector("#c");
+        this.keydownHandler = this.keydown.bind(this);
+        this.keyupHandler = this.keyup.bind(this);
+        this.pointerlockchangeHandler = this.pointerlockchange.bind(this);
+        this.clickHandler = this.click.bind(this);
+        window.addEventListener('keydown',this.keydownHandler,false);
+        window.addEventListener('keyup',this.keyupHandler,false);
+        document.addEventListener('pointerlockchange', this.pointerlockchangeHandler, false);
+        document.addEventListener('pointerlockerror', lockError, false);
+        canvas.addEventListener('click', this.clickHandler, false);
+
+        //ENABLE WEBGL
+        gl = canvas.getContext("webgl2");
+        // get required extensions for luminance textures
+        if (!gl.getExtension('EXT_color_buffer_float')) {
+            return alert('need EXT_color_buffer_float');
+        }
+        if (!gl.getExtension('OES_texture_float_linear')) {
+            return alert('need OES_texture_float_linear');
+        }
+
+        if (!gl) {
+            return alert('No webGL :(');
+        }
+        
+        // gl.enable(gl.BLEND);
+        // gl.blendFunc(gl.ONE, gl.ONE);
+
+        //INIT PROGRAMS
+        let editor_prog = new Precomputer();
+        await editor_prog.initProgram();
+        
         this.programs.push(editor_prog);
         
-        //setup the viewport
         gl.viewport(0, 0, canvas.width, canvas.height);
 
         this.resizeObserver = new ResizeObserver(this.resizeCanvasToDisplaySize.bind(this));
@@ -246,11 +321,10 @@ class App {
         this.cameraVec[1] = Math.sin(this.camera[1]);
         this.cameraVec[2] = Math.sin(this.camera[0]) * Math.cos(this.camera[1]);
     }
-
-
     resizeCanvasToDisplaySize(entries) {
         if(this.stopped)
             return;
+
         for(let entry of entries) {
             let canvas = entry.target;
             // Lookup the size the browser is displaying the canvas in CSS pixels.
@@ -272,9 +346,8 @@ class App {
             }
         }
     }
-
     notifyResize() {
-        gl.uniform2f(this.programs[0].u_("resolution"), gl.canvas.width, gl.canvas.height);
+        this.programs[this.currentProgram].resize();
         // console.log('resized');
     }
     draw(timestamp) {  
@@ -292,18 +365,13 @@ class App {
         let move = [0, 0, 0];
         for(let i = 0; i < 3; i++) {
             move[i] = this.move[0] * right[i] + this.move[1] * top[i] + this.move[2] * forward[i];
-        }
-        for(let i = 0; i < 3; i++) {
             this.cameraPos[i] += move[i] * delta;
         }
 
         //draw
-        let program = this.programs[0]
-        program.prepareDraw();
-        gl.uniform1f(this.programs[0].u_("seed"), Math.random()*timestamp * 1.623426 % 1);
-        gl.uniform3f(this.programs[0].u_("cameraPos"), this.cameraPos[0], this.cameraPos[1], this.cameraPos[2]);
-        gl.uniform3f(this.programs[0].u_("cameraVec"), this.cameraVec[0], this.cameraVec[1], this.cameraVec[2]);
-        
+        let program = this.programs[this.currentProgram];
+        let seed = Math.random()*timestamp * 1.623426 % 1;
+        program.prepareDraw(seed, this.cameraPos, this.cameraVec);
 
         gl.drawArrays(gl.TRIANGLES, 0, 6);
 

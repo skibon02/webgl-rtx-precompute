@@ -46,11 +46,6 @@ struct Cube {
     Material material;
 };
 
-struct PointLight {
-    vec3 position;
-    vec3 power;
-};
-
 struct Intersection {
     vec3 position;
     vec3 normal;
@@ -78,41 +73,55 @@ void createCoordinateSystem(vec3 normal, out vec3 tangent, out vec3 bitangent) {
     }
     bitangent = cross(normal, tangent);
 }
+vec3 cosineWeightedDirection(float seed, vec3 normal) {
+    vec3 rotX, rotY;
+    createCoordinateSystem(normal, rotX, rotY);
+    float r1 = 2.0 * PI * random(vec3(12.9898, 78.233, 151.7182), seed);
+    float r2 = random(vec3(63.7264, 10.873, 623.6736), seed);
+    float r2s = sqrt(r2);
+    vec3 w = normal;
+    vec3 u = rotX;
+    vec3 v = rotY;
+    vec3 d = normalize(u * cos(r1) * r2s + v * sin(r1) * r2s + w * sqrt(1.0 - r2));
+    return d;
+}
+//Scene
+const int numSpheres = 4;
+Sphere spheres[numSpheres] = Sphere[](
+    // //metal
+    // Sphere(vec3(-0.75, -1.45, -4.4), 1.05, 
+    // Material(
+    //     vec3(0.8, 0.4, 0.8), 
+    //     vec3(0.0), 1.0, 0.8, false)),
 
-// //Scene
-// const int numSpheres = 4;
-// Sphere spheres[numSpheres] = Sphere[](
-//     //metal
-//     Sphere(vec3(-0.75, -1.45, -4.4), 1.05, 
-//     Material(
-//         vec3(0.8, 0.4, 0.8), 
-//         vec3(0.0), 1.0, 0.8, false)),
+    // //glass
+    // Sphere(vec3(2.0, -2.05, -3.7), 0.5, 
+    // Material(
+    //     vec3(0.9, 1.0, 0.8), 
+    //     vec3(0.0), 0.0, 0.8, true)),
 
-//     //glass
-//     Sphere(vec3(2.0, -2.05, -3.7), 0.5, 
-//     Material(
-//         vec3(0.9, 1.0, 0.8), 
-//         vec3(0.0), 0.0, 0.8, true)),
+    // Sphere(vec3(-1.75, -1.95, -3.1), 0.6, 
+    // Material(
+    //     vec3(1, 1, 1), 
+    //     vec3(0.0), 0.0, 0.8, false)),
 
-//     Sphere(vec3(-1.75, -1.95, -3.1), 0.6, 
-//     Material(
-//         vec3(1, 1, 1), 
-//         vec3(0.0), 0.0, 0.8, false)),
-
-//     //light
-//     Sphere(vec3(0, 17.8, -1), 15.0, 
-//         Material(
-//             vec3(0.0, 0.0, 0.0), 
-//             vec3(50000.0, 40000.0, 45000.0), 0.0, 0.8, false))
-// );
-
-const int numPointLights = 4;
-PointLight pointLights[numPointLights] = PointLight[](
-    PointLight(vec3(7, 4, -2), vec3(50000.0, 40000.0, 45000.0)),
-    PointLight(vec3(7, 15.4, -2), vec3(10000.0, 40000.0, 45000.0)),
-    PointLight(vec3(-2, 4.4, 9), vec3(40000.0, 10000.0, 45000.0)),
-    PointLight(vec3(7, 6.4, 17), vec3(40000.0, 45000.0, 10000.0))
-    
+    //light
+    Sphere(vec3(7, 4, -2), 1.0, 
+        Material(
+            vec3(0.0, 0.0, 0.0), 
+            vec3(5000.0, 4000.0, 4500.0) * 4.0, 0.0, 0.8, 0.0)),
+    Sphere(vec3(7, 15.4, -2), 1.0, 
+        Material(
+            vec3(0.0, 0.0, 0.0), 
+            vec3(1000.0, 4000.0, 4500.0) * 4.0, 0.0, 0.8, 0.0)),
+    Sphere(vec3(-2, 4.4, 9), 1.0, 
+        Material(
+            vec3(0.0, 0.0, 0.0), 
+            vec3(4000.0, 1000.0, 4500.0) * 4.0, 0.0, 0.8, 0.0)),
+    Sphere(vec3(7, 6.4, 17), 1.0, 
+        Material(
+            vec3(0.0, 0.0, 0.0), 
+            vec3(4000.0, 4500.0, 1000.0) * 4.0, 0.0, 0.8, 0.0))
 );
 
 Intersection intersectSphere(Ray ray, Sphere sphere) {
@@ -139,7 +148,6 @@ Intersection intersectSphere(Ray ray, Sphere sphere) {
 
 Intersection intersectBlocks(Ray ray) {
     Intersection res;
-    res.distance == -1.0;
 
     vec3 rayDirInv = 1.0 / ray.dir;
     vec3 tMin = (vec3(0.0) - ray.origin) * rayDirInv;
@@ -180,6 +188,12 @@ Intersection intersectBlocks(Ray ray) {
                 t1.z = (floor(pos.z - eps) - pos.z) * rayDirInv.z;
             }
 
+            if(t1.x == 0.0)
+                t1.x = 100000.0;
+            if(t1.y == 0.0)
+                t1.y = 100000.0;
+            if(t1.z == 0.0)
+                t1.z = 100000.0;
             float mint = min(t1.x, min(t1.y, t1.z));
             if(mint == t1.x) dirmask.x = 1.0;
             else
@@ -202,6 +216,7 @@ Intersection intersectBlocks(Ray ray) {
             }
             count++;
         }
+        // return Intersection(ray.origin, vec3(0.0, t+1.0, 0.0), 1.0, u_materials[0]);
     }
     return res;
 }
@@ -210,13 +225,13 @@ Intersection intersect(Ray ray) {
     Intersection intersection;
     intersection.distance = -1.0;
 
-    // for (int i = 0; i < numSpheres; i++) {
-    //     Sphere sphere = spheres[i];
-    //     Intersection res = intersectSphere(ray, sphere);
-    //     if (res.distance > 0.0 && (intersection.distance < 0.0 || res.distance < intersection.distance)) {
-    //         intersection = res;
-    //     }
-    // }
+    for (int i = 0; i < numSpheres; i++) {
+        Sphere sphere = spheres[i];
+        Intersection res = intersectSphere(ray, sphere);
+        if (res.distance > 0.0 && (intersection.distance < 0.0 || res.distance < intersection.distance)) {
+            intersection = res;
+        }
+    }
 
     // check collision with 3d grid
     Intersection res = intersectBlocks(ray);
@@ -227,40 +242,18 @@ Intersection intersect(Ray ray) {
     return intersection;
 }
 
-vec3 addDirectLight(Intersection intersection) {
-    vec3 color = vec3(0.0);
-    vec3 tan, bitan;
-    createCoordinateSystem(intersection.normal, tan, bitan);
-    for (int i = 0; i < numPointLights; i++) {
-        PointLight pointLight = pointLights[i];
-        vec3 lightDir = normalize(pointLight.position - intersection.position);
-        float lightDistance = length(pointLight.position - intersection.position);
-        float lightIntensity = 1.0 / (lightDistance * lightDistance);
-        Ray shadowRay = Ray(intersection.position + intersection.normal * eps, lightDir);
-        Intersection shadowIntersection = intersect(shadowRay);
-        if (shadowIntersection.distance < 0.0 || shadowIntersection.distance > lightDistance) {
-            color += pointLight.power * lightIntensity * max(0.0, dot(intersection.normal, lightDir));
-        }
-
-    }
-    return color;
-}
-
 const float finalLumScale = 0.0008;
-const int MAX_BOUNCES = 15;
-bool hitGlass = false;
-int hitGlassI = 0;
-int decision = 0;
+const int MAX_BOUNCES = 3;
 vec3 pathTrace(Ray ray) {
     int depth = 0;
     //color of ray, that flew out of the camera
     vec3 lightColor = vec3(0.0);
-    vec3 resColor = vec3(0.0);
     vec3 throughput = vec3(1.0);
 
     while(depth < MAX_BOUNCES) {
         Intersection intersection = intersect(ray);
-        if(intersection.distance == -1.0) {
+
+        if(intersection.distance < 0.0) {
             break;
         }
         ray.origin = intersection.position;
@@ -282,55 +275,38 @@ vec3 pathTrace(Ray ray) {
                 float cost1 = (-dot(ray.dir, intersection.normal));
                 float cost2 = 1.0 - n * n * (1.0 - cost1 * cost1);
                 float R = R0 + (1.0 - R0) * pow(1.0 - cost1, 5.0); // Schlick's approximation
-                cur_seed += random(vec3(16.231, 132.52, 25.3215), cur_seed);
-                throughput *= intersection.material.albedo;
-                if(cost2 > 0.0) {
-                    if(hitGlassI > 1)
-                    {
-                        ray.dir = normalize(n * ray.dir + (n * cost1 - sqrt(cost2)) * intersection.normal);
-                    }
-                    else
-                        if(hitGlassI == 0 && decision % 2 == 0 || hitGlassI == 1 && decision / 2 == 0) {
-                            ray.dir = normalize(n * ray.dir + (n * cost1 - sqrt(cost2)) * intersection.normal);
-                            throughput *= (1.0 - R) * 2.0;
-                        }
-                        else {
-                            ray.dir = normalize(reflect(ray.dir, intersection.normal));
-                            throughput *= R * 2.0;
-                        }
-                }
-                else {
+                if (cost2 > 0.0 && random(vec3(252.315, 26.236, 152.9342), cur_seed + float(depth)) > R) {
+                    ray.dir = normalize(n * ray.dir + (n * cost1 - sqrt(cost2)) * intersection.normal);
+                } else {
                     ray.dir = normalize(reflect(ray.dir, intersection.normal));
                 }
-                hitGlass = true;
-                hitGlassI++;
+                throughput *= intersection.material.albedo;
             } 
             else {
-                // test normals
+                
+                // // test normals
                 // lightColor = abs(intersection.normal) * 500.0;
                 // break;
-                float diffuseFactor = 1.0 - intersection.material.reflectivity;
-                float reflectFactor = intersection.material.reflectivity;
-                //diffuse
-                vec3 lightEmission = addDirectLight( intersection);
+                if(random(vec3(52.315, 126.236, 154.9342), cur_seed + float(depth)) >= intersection.material.reflectivity) {
+                    //diffuse
 
-                resColor += lightEmission * intersection.material.albedo * intersection.material.albedoFactor * throughput * diffuseFactor / PI;
-                if(reflectFactor == 0.0) {
-                    break;
+                    ray.dir = cosineWeightedDirection(cur_seed + float(depth), intersection.normal);
+                    float cost = dot(ray.dir, intersection.normal);
+                    throughput *= intersection.material.albedo * intersection.material.albedoFactor * cost / PI;
+                } else {
+                    //reflection
+                    float cost = dot(ray.dir, intersection.normal);
+                    ray.dir = normalize(ray.dir - intersection.normal * cost * 2.0);
+                    throughput *= intersection.material.albedo * intersection.material.albedoFactor;
                 }
-                
-                //reflection
-                float cost = dot(ray.dir, intersection.normal);
-                ray.dir = normalize(ray.dir - intersection.normal * cost * 2.0);
-                throughput *= intersection.material.albedo * intersection.material.albedoFactor * reflectFactor;
             }
         }
 
         depth++;
     }
-    return resColor + lightColor * throughput;
+    return lightColor * throughput;
 }
-const int SAMPLES = 1;
+const int SAMPLES = 100;
 const float aa_factor = 0.0;
 void main() {
     cur_seed = u_seed;
@@ -339,21 +315,32 @@ void main() {
     if(u_resolution.y > u_resolution.x) {
         fovscale *= u_resolution.y / u_resolution.x;
     }
-    //get vector from angles
     
+
+    float lightResolution = 100.0;
+    vec2 texCoord = pos * 0.5 + 0.5;
+    vec2 texCoordPix = texCoord * u_resolution;
+    // if(texCoordPix.x > lightResolution || texCoordPix.y > lightResolution) {
+    //     outColor = vec4(0.3, 0.5, 0.5, 1.0);
+    //     return;
+    // }
+
+    //block 7 6 1
+    // ray.origin = vec3(7.0, 6.0, 5.0 + eps) + vec3(texCoordPix.x / lightResolution, texCoordPix.y / lightResolution, 0.0);
+    // ray.dir = vec3(0, 0, 1);
+
+    // ray.dir = cosineWeightedDirection(cur_seed + texCoordPix.x + texCoordPix.y * 3.0, vec3(0, 0, -1));
+
+    //camera view
     vec3 top = vec3(0.0, 1.0, 0.0);
     vec3 right = normalize(cross(u_cameraVec, top));
     top = normalize(cross(right, u_cameraVec));
     ray.dir = normalize(u_cameraVec + right * (pos.x * u_resolution.x / u_resolution.y) * fovscale + top * (pos.y) * fovscale);
-
-    //ray.dir = vec3(0.0, 0.0, -1.0) + vec3(pos.x*(u_resolution.x / u_resolution.y), pos.y, 0.0) * fovscale;
-    ray.dir = normalize(ray.dir);
     ray.origin = u_cameraPos;
+
     vec3 col = vec3(0.0);
     int samples_n = SAMPLES;
     for(int i = 0; i < samples_n; i++) {
-        decision = i;
-        hitGlassI = 0;
         if(aa_factor > 0.0) {
             ray.dir.x += (random(vec3(525.315, 126.26, 12.42), cur_seed + float(i)) - 0.5) / u_resolution.x * aa_factor;
             ray.dir.y += (random(vec3(125.231, 162.135, 115.321), cur_seed + float(i)) - 0.5) / u_resolution.y * aa_factor;
@@ -362,12 +349,9 @@ void main() {
         }
         cur_seed += random(vec3(315.231, 13.5123, 125.3215), cur_seed + float(i));
         col += pathTrace(ray);
-        if(hitGlass)
-            samples_n= 4;
     }
     col /= float(samples_n);
     col *=  finalLumScale;
-    vec2 texCoord = pos * 0.5 + 0.5;
     //gamma correction
     col = pow(col, vec3(1.0 / 2.2));
     outColor = vec4(col, 1.0);

@@ -4,6 +4,46 @@ const Chunk_Size = 15;
 function lockError(e){
     console.log('pointer lock failed');
 }
+
+function sfc32(a, b, c, d) {
+    return function() {
+      a >>>= 0; b >>>= 0; c >>>= 0; d >>>= 0; 
+      var t = (a + b) | 0;
+      a = b ^ b >>> 9;
+      b = c + (c << 3) | 0;
+      c = (c << 21 | c >>> 11);
+      d = d + 1 | 0;
+      t = t + d | 0;
+      c = c + t | 0;
+      return (t >>> 0) / 4294967296;
+    }
+}
+function cyrb128(str) {
+    let h1 = 1779033703, h2 = 3144134277,
+        h3 = 1013904242, h4 = 2773480762;
+    for (let i = 0, k; i < str.length; i++) {
+        k = str.charCodeAt(i);
+        h1 = h2 ^ Math.imul(h1 ^ k, 597399067);
+        h2 = h3 ^ Math.imul(h2 ^ k, 2869860233);
+        h3 = h4 ^ Math.imul(h3 ^ k, 951274213);
+        h4 = h1 ^ Math.imul(h4 ^ k, 2716044179);
+    }
+    h1 = Math.imul(h3 ^ (h1 >>> 18), 597399067);
+    h2 = Math.imul(h4 ^ (h2 >>> 22), 2869860233);
+    h3 = Math.imul(h1 ^ (h3 >>> 17), 951274213);
+    h4 = Math.imul(h2 ^ (h4 >>> 19), 2716044179);
+    return [(h1^h2^h3^h4)>>>0, (h2^h1)>>>0, (h3^h1)>>>0, (h4^h1)>>>0];
+}
+function vec3ToLin(vec, sz) {
+    return vec[0] + vec[1] * sz + vec[2] * sz * sz;
+}
+
+//encode block_material, sample xyz, sample rotation
+function pack5_16(vec) {
+    let sz = 16;
+    return (vec[0] + 1) + vec[1] * sz + vec[2] * sz * sz + vec[3] * sz * sz * sz + (vec[4] + 3) * sz * sz * sz * sz;
+}
+
 class Prog {
     constructor(name) {
         this.name = name;
@@ -148,19 +188,34 @@ class RTR extends Prog {
 class Precomputer extends Prog {
     constructor() {
         super("precomputer");
+        this.pixelsPerSample = 64;
+        this.samplesLength = 60;
+        this.samplesPacked = new Array(4020);
     }
+
+    getAdjacentBlock(vec) {
+        let lin = vec3ToLin(vec, Chunk_Size);
+        if(lin < 0 || lin >= this.blocks.length) {
+            return -1;
+        }
+        return this.blocks[lin];
+    }
+    
 
     async initProgram() {await super.initProgram();
         gl.uniform2f(this.u_("resolution"), gl.canvas.width, gl.canvas.height);
         
         this.blocks = new Array(Chunk_Size * Chunk_Size * Chunk_Size);
         this.blocks.fill(-1);
+        let prefix = "incredible_";
+        let seed = cyrb128(prefix + "map1");
+        let rand = sfc32(seed[0], seed[1], seed[2], seed[3]);
 
         for(let i = 1; i < Chunk_Size-1; i++) {
             for(let j = 1; j < Chunk_Size-1; j++) {
                 for(let k = 1; k < Chunk_Size-1; k++) {
-                    if(Math.random() > 0.66) {
-                        if(Math.random() > 0.5) {
+                    if(rand() < 0.12) {
+                        if(rand() < 0.5) {
                             this.blocks[i + j * Chunk_Size + k * Chunk_Size * Chunk_Size] = 1;
                         } else {
                             this.blocks[i + j * Chunk_Size + k * Chunk_Size * Chunk_Size] = 0;
@@ -170,13 +225,62 @@ class Precomputer extends Prog {
                 }
             }
         }
+        for(let i = 0; i < Chunk_Size * Chunk_Size * Chunk_Size; i++) {
+            this.samplesPacked[i] = pack5_16([this.blocks[i], 0, 0, -3, 0], Chunk_Size);
+        }
 
-        gl.uniform1iv(this.u_("blocks"), new Int16Array(this.blocks));
+        let sampleCounter = 0;
+        loop1:
+        for(let i = 1; i < Chunk_Size-1; i++) {
+            for(let j = 1; j < Chunk_Size-1; j++) {
+                for(let k = 1; k < Chunk_Size-1; k++) {
+                    let material = this.blocks[vec3ToLin([i,j,k], Chunk_Size)];
+                    if(material != -1) {
+                        if(this.getAdjacentBlock([i-1, j, k]) == -1) {
+                            this.samplesPacked[sampleCounter] += pack5_16([-1, i,j,k, -1]);
+                            sampleCounter++;
+                        }
+                        if(this.getAdjacentBlock([i+1, j, k]) == -1) {
+                            this.samplesPacked[sampleCounter] += pack5_16([-1, i,j,k, 1]);
+                            sampleCounter++;
+                        }
+                        if(this.getAdjacentBlock([i, j-1, k]) == -1) {
+                            this.samplesPacked[sampleCounter] += pack5_16([-1, i,j,k, -2]);
+                            sampleCounter++;
+                        }
+                        if(this.getAdjacentBlock([i, j+1, k]) == -1) {
+                            this.samplesPacked[sampleCounter] += pack5_16([-1, i,j,k, 2]);
+                            sampleCounter++;
+                        }
+                        if(this.getAdjacentBlock([i, j, k-1]) == -1) {
+                            this.samplesPacked[sampleCounter] += pack5_16([-1, i,j,k, -3]);
+                            sampleCounter++;
+                        }
+                        if(this.getAdjacentBlock([i, j, k+1]) == -1) {
+                            this.samplesPacked[sampleCounter] += pack5_16([-1, i,j,k, 3]);
+                            sampleCounter++;
+                        }
+
+                        if(sampleCounter >= this.samplesLength*this.samplesLength) {
+                            break loop1;
+                        }
+                    }
+                }
+            }
+        }
+
+        //blocks
+        // gl.uniform1iv(this.u_("blocks"), new Int16Array(this.blocks));
+
+        //materials
         gl.uniform1fv(this.u_("materials[0].albedoFactor"), new Float32Array([0.8]));
         gl.uniform3fv(this.u_("materials[0].albedo"), new Float32Array([0.6, 0.8, 0.8]));
         gl.uniform1fv(this.u_("materials[1].albedoFactor"), new Float32Array([0.6]));
         gl.uniform3fv(this.u_("materials[1].albedo"), new Float32Array([0.3, 0.2, 0.8]));
         gl.uniform1f(this.u_("materials[1].reflectivity"), 0.2);
+
+        //samples
+        gl.uniform1iv(this.u_("packedData"), new Int16Array(this.samplesPacked));
     }
     prepareDraw(seed, cameraPos, cameraVec) {
         super.prepareDraw();

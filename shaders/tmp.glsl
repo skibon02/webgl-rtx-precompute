@@ -6,9 +6,8 @@ in vec2 pos;
 
 const int Chunk_Size = 15;
 
-const int buf_size = 4020;
-const int pack_factor = 16;
-uniform int u_packedData[buf_size];
+
+uniform int u_blocks[Chunk_Size*Chunk_Size*Chunk_Size];
 uniform vec2 u_resolution;
 uniform float u_seed;
 
@@ -22,15 +21,15 @@ struct Material {
     float isGlass;
 };
 
-uniform Material[2] u_materials;
+uniform Material[10] u_materials;
 
-int get_block(int i) {
-    return u_packedData[i] % pack_factor - 1;
-}
+
 //precompute info
 
-const int PixelsPerSample = 32;
+const int PixelsPerSample = 64;
 const int SampleLength = 60;
+uniform int u_positions[SampleLength*SampleLength];
+uniform int u_sides[SampleLength*SampleLength];
 // uniform sampler2D u_texture;
 
 
@@ -213,7 +212,7 @@ Intersection intersectBlocks(Ray ray) {
 
             vec3 blockpos = floor(pos + eps*ray.dir);
 
-            int block = get_block(int(blockpos.x) + int(blockpos.z) * Chunk_Size + int(blockpos.y) * Chunk_Size * Chunk_Size);
+            int block = u_blocks[int(blockpos.x) + int(blockpos.z) * Chunk_Size + int(blockpos.y) * Chunk_Size * Chunk_Size];
 
             if (block != -1) {
                 res.distance = t;
@@ -251,7 +250,7 @@ Intersection intersect(Ray ray) {
 }
 
 const float finalLumScale = 0.0008;
-const int MAX_BOUNCES = 4;
+const int MAX_BOUNCES = 6;
 vec3 pathTrace(Ray ray) {
     int depth = 0;
     int diffuseCount = 0;
@@ -269,7 +268,7 @@ vec3 pathTrace(Ray ray) {
         
         //update light color and throughput
         if(intersection.material.emission != vec3(0.0)) {
-            if(diffuseCount >= 0)
+            if(diffuseCount >= 1)
                 lightColor = intersection.material.emission;
             break;
         } else {
@@ -318,7 +317,7 @@ vec3 pathTrace(Ray ray) {
     }
     return lightColor * throughput;
 }
-const int SAMPLES = 3;
+const int SAMPLES = 8;
 const float aa_factor = 0.0;
 void main() {
     cur_seed = u_seed;
@@ -327,10 +326,6 @@ void main() {
     if(u_resolution.y > u_resolution.x) {
         fovscale *= u_resolution.y / u_resolution.x;
     }
-
-    //unpack materials info
-    int csc = Chunk_Size * Chunk_Size * Chunk_Size;
-    int shift = 4*4;
     
 
     vec2 texCoord = pos * 0.5 + 0.5; // 0..1
@@ -338,64 +333,52 @@ void main() {
     ivec2 texSample = texCoordPix / PixelsPerSample;    // 0..SampleLength
     vec2 texPix = vec2(texCoordPix) / float(PixelsPerSample);       // 0..1
     
-    int sample_loc = texSample.x + texSample.y * SampleLength;
-    if(min(texSample.x, texSample.y) < 0 || max(texSample.x, texSample.y) >= SampleLength)
-    {
-        outColor = vec4(vec3(0.5), 1.0);   
-        return;
-    }
-
     //extract the positions
+    int sample_loc = texSample.x + texSample.y * SampleLength;
+
     ivec3 sample_block_pos = ivec3(0.0);
-    sample_block_pos.x = (u_packedData[sample_loc] >> 4) % pack_factor;
-    sample_block_pos.y = (u_packedData[sample_loc] >> 8) % pack_factor;
-    sample_block_pos.z = (u_packedData[sample_loc] >> 12) % pack_factor;
+    sample_block_pos.z = u_positions[sample_loc] / (Chunk_Size * Chunk_Size);
+    sample_block_pos.y = u_positions[sample_loc] / Chunk_Size % Chunk_Size;
+    sample_block_pos.x = u_positions[sample_loc] % Chunk_Size;
+    // int side = u_sides[sample_loc];
 
-    int side = (u_packedData[sample_loc] >> 16) % pack_factor - 3;
+    // ray.origin = vec3(sample_block_pos);
+    // ray.dir = vec3(0);
+    // if(side == 1) {
+    //     ray.dir.x = 1.0;
+    //     ray.origin.z += texPix.x;
+    //     ray.origin.y += texPix.y;
+    // } else if(side == -1) {
+    //     ray.dir.x = -1.0;
+    //     ray.origin.z += texPix.x;
+    //     ray.origin.y += texPix.y;
+    // } else if(side == 2) {
+    //     ray.dir.y = 1.0;
+    //     ray.origin.x += texPix.x;
+    //     ray.origin.z += texPix.y;
+    // } else if(side == -2) {
+    //     ray.dir.y = -1.0;
+    //     ray.origin.x += texPix.x;
+    //     ray.origin.z += texPix.y;
+    // } else if(side == 3) {
+    //     ray.dir.z = 1.0;
+    //     ray.dir.x += texPix.x;
+    //     ray.dir.y += texPix.y;
+    // } else if(side == -3) {
+    //     ray.dir.z = -1.0;
+    //     ray.dir.x += texPix.x;
+    //     ray.dir.y += texPix.y;
+    // }
 
-    ray.origin = vec3(sample_block_pos);
-    ray.dir = vec3(0);
-    if(side == 1) {
-        ray.dir.x = 1.0;
-        ray.origin.z += texPix.x;
-        ray.origin.y += texPix.y;
-    }
-    if(side == -1) {
-        ray.dir.x = -1.0;
-        ray.origin.z += texPix.x;
-        ray.origin.y += texPix.y;
-    }
-    if(side == 2) {
-        ray.dir.y = 1.0;
-        ray.origin.x += texPix.x;
-        ray.origin.z += texPix.y;
-    }
-    if(side == -2) {
-        ray.dir.y = -1.0;
-        ray.origin.x += texPix.x;
-        ray.origin.z += texPix.y;
-    }
-    if(side == 3) {
-        ray.dir.z = 1.0;
-        ray.origin.x += texPix.x;
-        ray.origin.y += texPix.y;
-    }
-    if(side == -3) {
-        ray.dir.z = -1.0;
-        ray.origin.x += texPix.x;
-        ray.origin.y += texPix.y;
-    }
-    // outColor = vec4(vec3(sample_block_pos) / float(Chunk_Size), 1.0);
-    // return;
 
-    ray.dir = cosineWeightedDirection(cur_seed + texCoord.x * 0.3 + texCoord.y * 3.3, ray.dir);
+    // ray.dir = cosineWeightedDirection(cur_seed + texCoordPix.x + texCoordPix.y * 3.0, vec3(0, 0, -1));
 
     //camera view
-    // vec3 top = vec3(0.0, 1.0, 0.0);
-    // vec3 right = normalize(cross(u_cameraVec, top));
-    // top = normalize(cross(right, u_cameraVec));
-    // ray.dir = normalize(u_cameraVec + right * (pos.x * u_resolution.x / u_resolution.y) * fovscale + top * (pos.y) * fovscale);
-    // ray.origin = u_cameraPos;
+    vec3 top = vec3(0.0, 1.0, 0.0);
+    vec3 right = normalize(cross(u_cameraVec, top));
+    top = normalize(cross(right, u_cameraVec));
+    ray.dir = normalize(u_cameraVec + right * (pos.x * u_resolution.x / u_resolution.y) * fovscale + top * (pos.y) * fovscale);
+    ray.origin = u_cameraPos;
 
     vec3 col = vec3(0.0);
     int samples_n = SAMPLES;

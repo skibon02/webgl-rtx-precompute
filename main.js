@@ -48,7 +48,7 @@ class Prog {
     constructor(name) {
         this.name = name;
         this.init = false;
-
+        this.clearEnabled = true;
     }
     createShader( type, source) {
         var shader = gl.createShader(type);
@@ -112,8 +112,14 @@ class Prog {
         gl.useProgram(this.program);
         gl.bindVertexArray(this.vao);
 
-        gl.clearColor(0.0, 0.0, 0.0, 1.0);
-        gl.clear(gl.COLOR_BUFFER_BIT);
+        if(this.clearEnabled) {
+            gl.clearColor(0.0, 0.0, 0.0, 1.0);
+            gl.clear(gl.COLOR_BUFFER_BIT);
+        }
+    }
+
+    postDraw() {
+
     }
     resize() {
     }
@@ -127,82 +133,6 @@ class RTR extends Prog {
 
     async initProgram() {
         await super.initProgram();
-        gl.uniform2f(this.u_("resolution"), gl.canvas.width, gl.canvas.height);
-        
-        this.blocks = new Array(Chunk_Size * Chunk_Size * Chunk_Size);
-        this.blocks.fill(-1);
-
-        for(let i = 1; i < Chunk_Size-1; i++) {
-            for(let j = 1; j < Chunk_Size-1; j++) {
-                for(let k = 1; k < Chunk_Size-1; k++) {
-                    if(Math.random() > 0.66) {
-                        if(Math.random() > 0.5) {
-                            this.blocks[i + j * Chunk_Size + k * Chunk_Size * Chunk_Size] = 1;
-                        } else {
-                            this.blocks[i + j * Chunk_Size + k * Chunk_Size * Chunk_Size] = 0;
-                        }
-                    }
-                    
-                }
-            }
-        }
-
-        gl.uniform1iv(this.u_("blocks"), new Int16Array(this.blocks));
-        gl.uniform1fv(this.u_("materials[0].albedoFactor"), new Float32Array([0.8]));
-        gl.uniform3fv(this.u_("materials[0].albedo"), new Float32Array([0.6, 0.8, 0.8]));
-        gl.uniform1fv(this.u_("materials[1].albedoFactor"), new Float32Array([0.6]));
-        gl.uniform3fv(this.u_("materials[1].albedo"), new Float32Array([0.3, 0.2, 0.8]));
-        gl.uniform1f(this.u_("materials[1].reflectivity"), 0.2);
-
-        // //create 2x2 float texture from array
-        // this.tex = gl.createTexture();
-        // gl.bindTexture(gl.TEXTURE_2D, this.tex);
-        // gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA32F, 2, 2, 0, gl.RGBA, gl.FLOAT, new Float32Array([
-        //     1, 0, 0, 1,
-        //     0, 1, 0, 1,
-        //     0, 0, 1, 1,
-        //     1, 1, 1, 1,
-        // ]));
-        // gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
-        // gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR); 
-        // gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
-        // gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
-
-
-        // gl.uniform1f(editor_prog.u_("u_texture"), 0);
-    }
-
-    resize() {
-        gl.uniform2f(this.u_("resolution"), gl.canvas.width, gl.canvas.height);
-    }
-
-    prepareDraw(seed, cameraPos, cameraVec) {
-        super.prepareDraw();
-        
-        gl.uniform1f(this.u_("seed"), seed);
-        gl.uniform3f(this.u_("cameraPos"), cameraPos[0], cameraPos[1], cameraPos[2]);
-        gl.uniform3f(this.u_("cameraVec"), cameraVec[0], cameraVec[1], cameraVec[2]);
-    }
-}
-
-class Precomputer extends Prog {
-    constructor() {
-        super("precomputer");
-        this.pixelsPerSample = 64;
-        this.samplesLength = 60;
-        this.samplesPacked = new Array(4020);
-    }
-
-    getAdjacentBlock(vec) {
-        let lin = vec3ToLin(vec, Chunk_Size);
-        if(lin < 0 || lin >= this.blocks.length) {
-            return -1;
-        }
-        return this.blocks[lin];
-    }
-    
-
-    async initProgram() {await super.initProgram();
         gl.uniform2f(this.u_("resolution"), gl.canvas.width, gl.canvas.height);
         
         this.blocks = new Array(Chunk_Size * Chunk_Size * Chunk_Size);
@@ -225,15 +155,81 @@ class Precomputer extends Prog {
                 }
             }
         }
+
+        gl.uniform1iv(this.u_("blocks"), new Int16Array(this.blocks));
+        gl.uniform1fv(this.u_("materials[0].albedoFactor"), new Float32Array([0.8]));
+        gl.uniform3fv(this.u_("materials[0].albedo"), new Float32Array([0.6, 0.8, 0.8]));
+        gl.uniform1fv(this.u_("materials[1].albedoFactor"), new Float32Array([0.6]));
+        gl.uniform3fv(this.u_("materials[1].albedo"), new Float32Array([0.3, 0.2, 0.8]));
+        gl.uniform1f(this.u_("materials[1].reflectivity"), 0.2);
+    }
+
+    resize() {
+        gl.uniform2f(this.u_("resolution"), gl.canvas.width, gl.canvas.height);
+    }
+
+    prepareDraw(seed, cameraPos, cameraVec) {
+        super.prepareDraw();
+        
+        gl.uniform1f(this.u_("seed"), seed);
+        gl.uniform3f(this.u_("cameraPos"), cameraPos[0], cameraPos[1], cameraPos[2]);
+        gl.uniform3f(this.u_("cameraVec"), cameraVec[0], cameraVec[1], cameraVec[2]);
+    }
+}
+
+class Precomputer extends Prog {
+    constructor() {
+        super("precomputer");
+        this.clearEnabled = false;
+        this.pixelsPerSample = 64;
+        this.samplesLength = 60;
+        this.samplesPacked = new Array(4020);
+        this.presentProg = new Prog("present");
+    }
+
+    getAdjacentBlock(vec) {
+        let lin = vec3ToLin(vec, Chunk_Size);
+        if(lin < 0 || lin >= this.blocks.length) {
+            return -1;
+        }
+        return this.blocks[lin];
+    }
+    
+
+    async initProgram() {
+
+        await super.initProgram();
+        gl.uniform2f(this.u_("resolution"), 4096, 4096);
+        
+        this.blocks = new Array(Chunk_Size * Chunk_Size * Chunk_Size);
+        this.blocks.fill(-1);
+        let prefix = "incredible_";
+        let seed = cyrb128(prefix + "map1");
+        let rand = sfc32(seed[0], seed[1], seed[2], seed[3]);
+
+        for(let i = 1; i < Chunk_Size-1; i++) {
+            for(let j = 1; j < Chunk_Size-1; j++) {
+                for(let k = 1; k < Chunk_Size-1; k++) {
+                    if(rand() < 0.12) {
+                        if(rand() < 0.5) {
+                            this.blocks[i + j * Chunk_Size + k * Chunk_Size * Chunk_Size] = 1;
+                        } else {
+                            this.blocks[i + j * Chunk_Size + k * Chunk_Size * Chunk_Size] = 0;
+                        }
+                    }
+                    
+                }
+            }
+        }
         for(let i = 0; i < Chunk_Size * Chunk_Size * Chunk_Size; i++) {
-            this.samplesPacked[i] = pack5_16([this.blocks[i], 0, 0, -3, 0], Chunk_Size);
+            this.samplesPacked[i] = pack5_16([this.blocks[i], 0, 0, 0, -3], Chunk_Size);
         }
 
         let sampleCounter = 0;
         loop1:
-        for(let i = 1; i < Chunk_Size-1; i++) {
+        for(let k = 1; k < Chunk_Size-1; k++) {
             for(let j = 1; j < Chunk_Size-1; j++) {
-                for(let k = 1; k < Chunk_Size-1; k++) {
+                for(let i = 1; i < Chunk_Size-1; i++) {
                     let material = this.blocks[vec3ToLin([i,j,k], Chunk_Size)];
                     if(material != -1) {
                         if(this.getAdjacentBlock([i-1, j, k]) == -1) {
@@ -268,9 +264,28 @@ class Precomputer extends Prog {
                 }
             }
         }
+        // debugger;
+        
+        //create texture
+        this.tex = gl.createTexture();
+        gl.bindTexture(gl.TEXTURE_2D, this.tex);
+        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA32F, 4096, 4096, 0, gl.RGBA, gl.FLOAT, null);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST); 
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
 
-        //blocks
-        // gl.uniform1iv(this.u_("blocks"), new Int16Array(this.blocks));
+        //create framebuffer
+        this.fbo = gl.createFramebuffer();
+        gl.bindFramebuffer(gl.FRAMEBUFFER, this.fbo);
+        gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, this.tex, 0);
+        gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+
+
+
+        gl.enable(gl.BLEND);
+        gl.blendFunc(gl.ONE, gl.ONE);
+
 
         //materials
         gl.uniform1fv(this.u_("materials[0].albedoFactor"), new Float32Array([0.8]));
@@ -280,18 +295,38 @@ class Precomputer extends Prog {
         gl.uniform1f(this.u_("materials[1].reflectivity"), 0.2);
 
         //samples
-        gl.uniform1iv(this.u_("packedData"), new Int16Array(this.samplesPacked));
+        gl.uniform1iv(this.u_("packedData"), new Int32Array(this.samplesPacked));
+        gl.uniform1i(this.u_("sampleCount"), sampleCounter);
+
+        // INIT PRESENT SUBPROGRAM
+
+        await this.presentProg.initProgram();
+        gl.uniform2f(this.presentProg.u_("resolution"), 1920, 1080);
+        gl.uniform1i(this.presentProg.u_("texture"), 0);
+        gl.uniform1f(this.presentProg.u_("texSize"), 4096);
+
     }
     prepareDraw(seed, cameraPos, cameraVec) {
+
+        gl.bindFramebuffer(gl.FRAMEBUFFER, this.fbo);
+        gl.viewport(0, 0, 4096, 4096);
         super.prepareDraw();
         
         gl.uniform1f(this.u_("seed"), seed);
-        gl.uniform3f(this.u_("cameraPos"), cameraPos[0], cameraPos[1], cameraPos[2]);
-        gl.uniform3f(this.u_("cameraVec"), cameraVec[0], cameraVec[1], cameraVec[2]);
+        // gl.uniform3f(this.u_("cameraPos"), cameraPos[0], cameraPos[1], cameraPos[2]);
+        // gl.uniform3f(this.u_("cameraVec"), cameraVec[0], cameraVec[1], cameraVec[2]);
+    }
+    postDraw() {
+        gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+        gl.viewport(0, 0, gl.canvas.width, gl.canvas.height);
+
+        this.presentProg.prepareDraw();
+
+        gl.drawArrays(gl.TRIANGLES, 0, 6);
     }
 
     resize() {
-        gl.uniform2f(this.u_("resolution"), gl.canvas.width, gl.canvas.height);
+        // gl.uniform2f(this.u_("resolution"), gl.canvas.width, gl.canvas.height);
     }
 }
     
@@ -341,8 +376,6 @@ class App {
             return alert('No webGL :(');
         }
         
-        // gl.enable(gl.BLEND);
-        // gl.blendFunc(gl.ONE, gl.ONE);
 
         //INIT PROGRAMS
         let editor_prog = new Precomputer();
@@ -478,6 +511,8 @@ class App {
         program.prepareDraw(seed, this.cameraPos, this.cameraVec);
 
         gl.drawArrays(gl.TRIANGLES, 0, 6);
+
+        program.postDraw();
 
 
         // setTimeout(() => {

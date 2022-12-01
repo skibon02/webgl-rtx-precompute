@@ -1,4 +1,5 @@
 #version 300 es
+//FUCK WEBGL LIMIT 4096 UNIFORMS
 
 precision highp float;
 
@@ -29,8 +30,9 @@ int get_block(int i) {
 }
 //precompute info
 
-const int PixelsPerSample = 32;
-const int SampleLength = 60;
+const int PixelsPerSample = 16;
+const int SampleLength = 55;
+uniform int u_sampleCount;
 // uniform sampler2D u_texture;
 
 
@@ -318,7 +320,7 @@ vec3 pathTrace(Ray ray) {
     }
     return lightColor * throughput;
 }
-const int SAMPLES = 3;
+const int SAMPLES = 8;
 const float aa_factor = 0.0;
 void main() {
     cur_seed = u_seed;
@@ -332,16 +334,20 @@ void main() {
     int csc = Chunk_Size * Chunk_Size * Chunk_Size;
     int shift = 4*4;
     
-
+    
     vec2 texCoord = pos * 0.5 + 0.5; // 0..1
     ivec2 texCoordPix = ivec2(round(texCoord * u_resolution)); // 0..resolution
     ivec2 texSample = texCoordPix / PixelsPerSample;    // 0..SampleLength
-    vec2 texPix = vec2(texCoordPix) / float(PixelsPerSample);       // 0..1
+    vec2 texPix = vec2(texCoordPix % PixelsPerSample) / float(PixelsPerSample);       // 0..1
     
     int sample_loc = texSample.x + texSample.y * SampleLength;
     if(min(texSample.x, texSample.y) < 0 || max(texSample.x, texSample.y) >= SampleLength)
     {
         outColor = vec4(vec3(0.5), 1.0);   
+        return;
+    }
+    if(sample_loc >= u_sampleCount) {
+        outColor = vec4(vec3(0.4, 0.8, 0.8), 1.0);   
         return;
     }
 
@@ -351,14 +357,21 @@ void main() {
     sample_block_pos.y = (u_packedData[sample_loc] >> 8) % pack_factor;
     sample_block_pos.z = (u_packedData[sample_loc] >> 12) % pack_factor;
 
-    int side = (u_packedData[sample_loc] >> 16) % pack_factor - 3;
+    int side = (u_packedData[sample_loc] / (256*256)) - 3;
 
     ray.origin = vec3(sample_block_pos);
     ray.dir = vec3(0);
+    if(texPix.x == 0.0) {
+        texPix.x = 0.01;
+    }
+    if(texPix.y == 0.0) {
+        texPix.y = 0.01;
+    }
     if(side == 1) {
         ray.dir.x = 1.0;
         ray.origin.z += texPix.x;
         ray.origin.y += texPix.y;
+        ray.origin.x += 1.0;
     }
     if(side == -1) {
         ray.dir.x = -1.0;
@@ -369,6 +382,7 @@ void main() {
         ray.dir.y = 1.0;
         ray.origin.x += texPix.x;
         ray.origin.z += texPix.y;
+        ray.origin.y += 1.0;
     }
     if(side == -2) {
         ray.dir.y = -1.0;
@@ -379,13 +393,14 @@ void main() {
         ray.dir.z = 1.0;
         ray.origin.x += texPix.x;
         ray.origin.y += texPix.y;
+        ray.origin.z += 1.0;
     }
     if(side == -3) {
         ray.dir.z = -1.0;
         ray.origin.x += texPix.x;
         ray.origin.y += texPix.y;
     }
-    // outColor = vec4(vec3(sample_block_pos) / float(Chunk_Size), 1.0);
+    // outColor = vec4(vec3(float(side) + 3.0) / 7.0, 1.0); //visualize side
     // return;
 
     ray.dir = cosineWeightedDirection(cur_seed + texCoord.x * 0.3 + texCoord.y * 3.3, ray.dir);
@@ -413,5 +428,5 @@ void main() {
     col *=  finalLumScale;
     //gamma correction
     col = pow(col, vec3(1.0 / 2.2));
-    outColor = vec4(col, 1.0);
+    outColor = vec4(col, 1.0) / 1024.0;
 }

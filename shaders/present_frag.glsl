@@ -7,7 +7,7 @@ in vec2 pos;
 uniform sampler2D u_texture;
 uniform vec2 u_resolution;
 uniform float u_texSize;
-float scale = 2.0;
+float scale = 1.0;
 
 out vec4 outColor;
 

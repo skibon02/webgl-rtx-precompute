@@ -30,7 +30,7 @@ int get_block(int i) {
 }
 //precompute info
 
-const int PixelsPerSample = 16;
+const int PixelsPerSample = 64;
 const int SampleLength = 55;
 uniform int u_sampleCount;
 // uniform sampler2D u_texture;

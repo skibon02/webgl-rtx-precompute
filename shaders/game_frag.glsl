@@ -13,12 +13,20 @@ uniform float u_seed;
 
 uniform vec3 u_cameraPos;
 uniform vec3 u_cameraVec;
+
+
+const float PixelsPerSample = 100.0;
+const int SampleLength = 40;
+uniform sampler2D u_precompTex;
+uniform highp isampler2D u_precompMappingData;
+uniform int u_precompUsed;
 struct Material {
     vec3 albedo;
     vec3 emission;
     float reflectivity;
     float albedoFactor;
     float isGlass;
+    vec3 luminosity;
 };
 
 uniform Material[100] u_materials;
@@ -108,10 +116,10 @@ void createCoordinateSystem(vec3 normal, out vec3 tangent, out vec3 bitangent) {
 
 const int numPointLights = 4;
 PointLight pointLights[numPointLights] = PointLight[](
-    PointLight(vec3(7, 4, -2), vec3(50000.0, 40000.0, 45000.0)),
-    PointLight(vec3(7, 15.4, -2), vec3(10000.0, 40000.0, 45000.0)),
-    PointLight(vec3(-2, 4.4, 9), vec3(40000.0, 10000.0, 45000.0)),
-    PointLight(vec3(7, 6.4, 17), vec3(40000.0, 45000.0, 10000.0))
+    PointLight(vec3(7, 4, -2), vec3(50000.0, 40000.0, 45000.0) * 0.3),
+    PointLight(vec3(7, 15.4, -2), vec3(10000.0, 40000.0, 45000.0) * 0.3),
+    PointLight(vec3(-2, 4.4, 9), vec3(40000.0, 10000.0, 45000.0) * 0.3),
+    PointLight(vec3(7, 6.4, 17), vec3(40000.0, 45000.0, 10000.0) * 0.3)
     
 );
 
@@ -155,7 +163,7 @@ Intersection intersectBlocks(Ray ray) {
         float t = tNear;
         if(tNear < eps)
             t = 0.0;
-        vec3 pos = ray.origin + ray.dir * t;
+        vec3 r_pos = ray.origin + ray.dir * t;
         vec3 stepdir = sign(ray.dir);
 
 
@@ -165,19 +173,19 @@ Intersection intersectBlocks(Ray ray) {
 
             vec3 t1 = vec3(0.0);
             if(stepdir.x >= 0.0) {
-                t1.x = (ceil(pos.x + eps) - pos.x) * rayDirInv.x;
+                t1.x = (ceil(r_pos.x + eps) - r_pos.x) * rayDirInv.x;
             } else {
-                t1.x = (floor(pos.x - eps) - pos.x) * rayDirInv.x;
+                t1.x = (floor(r_pos.x - eps) - r_pos.x) * rayDirInv.x;
             }
             if(stepdir.y >= 0.0) {
-                t1.y = (ceil(pos.y + eps) - pos.y) * rayDirInv.y;
+                t1.y = (ceil(r_pos.y + eps) - r_pos.y) * rayDirInv.y;
             } else {
-                t1.y = (floor(pos.y - eps) - pos.y) * rayDirInv.y;
+                t1.y = (floor(r_pos.y - eps) - r_pos.y) * rayDirInv.y;
             }
             if(stepdir.z >= 0.0) {
-                t1.z = (ceil(pos.z + eps) - pos.z) * rayDirInv.z;
+                t1.z = (ceil(r_pos.z + eps) - r_pos.z) * rayDirInv.z;
             } else {
-                t1.z = (floor(pos.z - eps) - pos.z) * rayDirInv.z;
+                t1.z = (floor(r_pos.z - eps) - r_pos.z) * rayDirInv.z;
             }
 
             float mint = min(t1.x, min(t1.y, t1.z));
@@ -187,17 +195,56 @@ Intersection intersectBlocks(Ray ray) {
                 else
                     if(mint == t1.z) dirmask.z = 1.0;
             t += mint;
-            pos += ray.dir * mint;
+            r_pos += ray.dir * mint;
 
-            vec3 blockpos = floor(pos + eps*ray.dir);
-
-            int block = u_blocks[int(blockpos.x) + int(blockpos.z) * Chunk_Size + int(blockpos.y) * Chunk_Size * Chunk_Size];
+            vec3 blockpos = floor(r_pos + eps*ray.dir);
+            int blockPosLin = int(blockpos.x) + int(blockpos.y) * Chunk_Size + int(blockpos.z) * Chunk_Size * Chunk_Size;
+            int block = u_blocks[blockPosLin];
 
             if (block != -1) {
                 res.distance = t;
-                res.position = pos;
+                res.position = r_pos;
                 res.normal = -dirmask * stepdir;
                 res.material = u_materials[block];
+
+                //extract luminocity from texture
+                int side = 0;
+                if(res.normal.x == -1.0) {
+                    side = 0;
+                }
+                if(res.normal.x == 1.0) {
+                    side = 1;
+                }
+                if(res.normal.y == -1.0) {
+                    side = 2;
+                }
+                if(res.normal.y == 1.0) {
+                    side = 3;
+                }
+                if(res.normal.z == -1.0) {
+                    side = 4;
+                }
+                if(res.normal.z == 1.0) {
+                    side = 5;
+                }
+                int sampleLocLin = texelFetch(u_precompMappingData, ivec2(blockPosLin, side), 0).r;
+                ivec2 sampleLoc = ivec2(sampleLocLin % SampleLength, sampleLocLin / SampleLength);
+                vec2 sampleLocalOffset;
+                if(res.normal.x != 0.0)
+                    sampleLocalOffset = vec2(r_pos.y - blockpos.y, r_pos.z - blockpos.z);
+                if(res.normal.y != 0.0)
+                    sampleLocalOffset = vec2(r_pos.x - blockpos.x, r_pos.z - blockpos.z);
+                if(res.normal.z != 0.0)
+                    sampleLocalOffset = vec2(r_pos.x - blockpos.x, r_pos.y - blockpos.y);
+
+                // ivec2 sampleLocalPos = ivec2(int(sampleLocalOffset.x * PixelsPerSample - 1.0), int(sampleLocalOffset.y*PixelsPerSample - 1.0));
+                // ivec2 samplePos = sampleLocalPos + sampleLoc * SampleLength;
+                vec2 sampleLocalPos = vec2(sampleLocalOffset.x * PixelsPerSample - 1.0, sampleLocalOffset.y*PixelsPerSample - 1.0);
+                vec2 samplePos = sampleLocalPos + vec2(sampleLoc * int(PixelsPerSample));
+                
+                vec4 precompPixel = texture(u_precompTex, samplePos / 4096.0);
+                // vec4 precompPixel = texelFetch(u_precompTex, ivec2(samplePos), 0);
+                res.material.luminosity = precompPixel.rgb / precompPixel.a;
                 break;
             }
             count++;
@@ -247,7 +294,7 @@ vec3 addDirectLight(Intersection intersection) {
 }
 
 const float finalLumScale = 0.0008;
-const int MAX_BOUNCES = 15;
+const int MAX_BOUNCES = 6;
 bool hitGlass = false;
 int hitGlassI = 0;
 int decision = 0;
@@ -312,9 +359,14 @@ vec3 pathTrace(Ray ray) {
                 float diffuseFactor = 1.0 - intersection.material.reflectivity;
                 float reflectFactor = intersection.material.reflectivity;
                 //diffuse
-                vec3 lightEmission = addDirectLight( intersection);
 
-                resColor += lightEmission * intersection.material.albedo * intersection.material.albedoFactor * throughput * diffuseFactor / PI;
+                if(u_precompUsed == 1) {
+                    resColor += intersection.material.luminosity / finalLumScale * diffuseFactor * intersection.material.albedo * intersection.material.albedoFactor * throughput / PI;
+                }
+                else {
+                    vec3 lightEmission = addDirectLight( intersection);
+                    resColor += lightEmission * intersection.material.albedo * intersection.material.albedoFactor * throughput * diffuseFactor / PI;
+                }
                 if(reflectFactor == 0.0) {
                     break;
                 }
@@ -322,6 +374,7 @@ vec3 pathTrace(Ray ray) {
                 //reflection
                 float cost = dot(ray.dir, intersection.normal);
                 ray.dir = normalize(ray.dir - intersection.normal * cost * 2.0);
+                
                 throughput *= intersection.material.albedo * intersection.material.albedoFactor * reflectFactor;
             }
         }
@@ -340,6 +393,8 @@ void main() {
         fovscale *= u_resolution.y / u_resolution.x;
     }
     //get vector from angles
+
+    vec2 pixpos = ((pos * 0.5)  + 0.5) * u_resolution;
     
     vec3 top = vec3(0.0, 1.0, 0.0);
     vec3 right = normalize(cross(u_cameraVec, top));

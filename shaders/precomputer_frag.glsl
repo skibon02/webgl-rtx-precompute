@@ -9,7 +9,6 @@ const int Chunk_Size = 15;
 
 const int buf_size = 4020;
 const int pack_factor = 16;
-uniform int u_packedData[buf_size];
 uniform vec2 u_resolution;
 uniform float u_seed;
 
@@ -25,16 +24,16 @@ struct Material {
 
 uniform Material[2] u_materials;
 
-int get_block(int i) {
-    return u_packedData[i] % pack_factor - 1;
-}
 //precompute info
 
-const int PixelsPerSample = 64;
-const int SampleLength = 55;
+const int PixelsPerSample = 100;
+const int SampleLength = 40;
 uniform int u_sampleCount;
-// uniform sampler2D u_texture;
+uniform highp isampler2D u_packedDataTex;
 
+int get_block(int i) {
+    return int(texelFetch(u_packedDataTex, ivec2(i, 0), 0).r)  % pack_factor - 1;
+}
 
 const float PI = 3.1415926535897932384626433832795;
 const float eps = 1e-5;
@@ -119,19 +118,19 @@ Sphere spheres[numSpheres] = Sphere[](
     Sphere(vec3(7, 4, -2), 1.0, 
         Material(
             vec3(0.0, 0.0, 0.0), 
-            vec3(5000.0, 4000.0, 4500.0) * 12.0, 0.0, 0.8, 0.0)),
+            vec3(5000.0, 4000.0, 4500.0) * 3.0, 0.0, 0.8, 0.0)),
     Sphere(vec3(7, 15.4, -2), 1.0, 
         Material(
             vec3(0.0, 0.0, 0.0), 
-            vec3(1000.0, 4000.0, 4500.0) * 12.0, 0.0, 0.8, 0.0)),
+            vec3(1000.0, 4000.0, 4500.0) * 3.0, 0.0, 0.8, 0.0)),
     Sphere(vec3(-2, 4.4, 9), 1.0, 
         Material(
             vec3(0.0, 0.0, 0.0), 
-            vec3(4000.0, 1000.0, 4500.0) * 12.0, 0.0, 0.8, 0.0)),
+            vec3(4000.0, 1000.0, 4500.0) * 3.0, 0.0, 0.8, 0.0)),
     Sphere(vec3(7, 6.4, 17), 1.0, 
         Material(
             vec3(0.0, 0.0, 0.0), 
-            vec3(4000.0, 4500.0, 1000.0) * 12.0, 0.0, 0.8, 0.0))
+            vec3(4000.0, 4500.0, 1000.0) * 3.0, 0.0, 0.8, 0.0))
 );
 
 Intersection intersectSphere(Ray ray, Sphere sphere) {
@@ -215,7 +214,7 @@ Intersection intersectBlocks(Ray ray) {
 
             vec3 blockpos = floor(pos + eps*ray.dir);
 
-            int block = get_block(int(blockpos.x) + int(blockpos.z) * Chunk_Size + int(blockpos.y) * Chunk_Size * Chunk_Size);
+            int block = get_block(int(blockpos.x) + int(blockpos.y) * Chunk_Size + int(blockpos.z) * Chunk_Size * Chunk_Size);
 
             if (block != -1) {
                 res.distance = t;
@@ -253,7 +252,7 @@ Intersection intersect(Ray ray) {
 }
 
 const float finalLumScale = 0.0008;
-const int MAX_BOUNCES = 4;
+const int MAX_BOUNCES = 6;
 vec3 pathTrace(Ray ray) {
     int depth = 0;
     int diffuseCount = 0;
@@ -271,7 +270,7 @@ vec3 pathTrace(Ray ray) {
         
         //update light color and throughput
         if(intersection.material.emission != vec3(0.0)) {
-            if(diffuseCount >= 0)
+            if(diffuseCount >= 0) //any
                 lightColor = intersection.material.emission;
             break;
         } else {
@@ -353,11 +352,11 @@ void main() {
 
     //extract the positions
     ivec3 sample_block_pos = ivec3(0.0);
-    sample_block_pos.x = (u_packedData[sample_loc] >> 4) % pack_factor;
-    sample_block_pos.y = (u_packedData[sample_loc] >> 8) % pack_factor;
-    sample_block_pos.z = (u_packedData[sample_loc] >> 12) % pack_factor;
+    sample_block_pos.x = (int(texelFetch(u_packedDataTex, ivec2(sample_loc, 0), 0).r) >> 4) % pack_factor;
+    sample_block_pos.y = (int(texelFetch(u_packedDataTex, ivec2(sample_loc, 0), 0).r) >> 8) % pack_factor;
+    sample_block_pos.z = (int(texelFetch(u_packedDataTex, ivec2(sample_loc, 0), 0).r) >> 12) % pack_factor;
 
-    int side = (u_packedData[sample_loc] / (256*256)) - 3;
+    int side = (int(texelFetch(u_packedDataTex, ivec2(sample_loc, 0), 0).r) / (256*256)) - 3;
 
     ray.origin = vec3(sample_block_pos);
     ray.dir = vec3(0);
@@ -369,19 +368,21 @@ void main() {
     }
     if(side == 1) {
         ray.dir.x = 1.0;
-        ray.origin.z += texPix.x;
-        ray.origin.y += texPix.y;
+        ray.origin.y += texPix.x;
+        ray.origin.z += texPix.y;
+
         ray.origin.x += 1.0;
     }
     if(side == -1) {
         ray.dir.x = -1.0;
-        ray.origin.z += texPix.x;
-        ray.origin.y += texPix.y;
+        ray.origin.y += texPix.x;
+        ray.origin.z += texPix.y;
     }
     if(side == 2) {
         ray.dir.y = 1.0;
         ray.origin.x += texPix.x;
         ray.origin.z += texPix.y;
+
         ray.origin.y += 1.0;
     }
     if(side == -2) {
@@ -393,6 +394,7 @@ void main() {
         ray.dir.z = 1.0;
         ray.origin.x += texPix.x;
         ray.origin.y += texPix.y;
+
         ray.origin.z += 1.0;
     }
     if(side == -3) {
@@ -403,7 +405,7 @@ void main() {
     // outColor = vec4(vec3(float(side) + 3.0) / 7.0, 1.0); //visualize side
     // return;
 
-    ray.dir = cosineWeightedDirection(cur_seed + texCoord.x * 0.3 + texCoord.y * 3.3, ray.dir);
+    vec3 norm = ray.dir;
 
     //camera view
     // vec3 top = vec3(0.0, 1.0, 0.0);
@@ -415,6 +417,8 @@ void main() {
     vec3 col = vec3(0.0);
     int samples_n = SAMPLES;
     for(int i = 0; i < samples_n; i++) {
+        ray.dir = cosineWeightedDirection(cur_seed + texCoord.x * 0.3 + texCoord.y * 3.3, norm);
+        float cost = dot(ray.dir, norm);
         if(aa_factor > 0.0) {
             ray.dir.x += (random(vec3(525.315, 126.26, 12.42), cur_seed + float(i)) - 0.5) / u_resolution.x * aa_factor;
             ray.dir.y += (random(vec3(125.231, 162.135, 115.321), cur_seed + float(i)) - 0.5) / u_resolution.y * aa_factor;
@@ -422,11 +426,9 @@ void main() {
             ray.dir = normalize(ray.dir);
         }
         cur_seed += random(vec3(315.231, 13.5123, 125.3215), cur_seed + float(i));
-        col += pathTrace(ray);
+        col += pathTrace(ray) * cost;
     }
     col /= float(samples_n);
     col *=  finalLumScale;
-    //gamma correction
-    col = pow(col, vec3(1.0 / 2.2));
     outColor = vec4(col, 1.0) / 1024.0;
 }

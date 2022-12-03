@@ -44,11 +44,33 @@ function pack5_16(vec) {
     return (vec[0] + 1) + vec[1] * sz + vec[2] * sz * sz + vec[3] * sz * sz * sz + (vec[4] + 3) * sz * sz * sz * sz;
 }
 
+var saveByteArray = (function () {
+    var a = document.createElement("a");
+    document.body.appendChild(a);
+    a.style = "display: none";
+    return function (data, name) {
+        var blob = new Blob(data, {type: "octet/stream"}),
+            url = window.URL.createObjectURL(blob);
+        a.href = url;
+        a.download = name;
+        a.click();
+        window.URL.revokeObjectURL(url);
+    };
+}());
+
 class Prog {
     constructor(name) {
         this.name = name;
         this.init = false;
         this.clearEnabled = true;
+    }
+
+    getAdjacentBlock(vec) {
+        let lin = vec3ToLin(vec, Chunk_Size);
+        if(lin < 0 || lin >= this.blocks.length) {
+            return -1;
+        }
+        return this.blocks[lin];
     }
     createShader( type, source) {
         var shader = gl.createShader(type);
@@ -117,6 +139,8 @@ class Prog {
             gl.clear(gl.COLOR_BUFFER_BIT);
         }
     }
+    setTextureContent(data) {
+    }
 
     postDraw() {
 
@@ -129,6 +153,7 @@ class Prog {
 class RTR extends Prog {
     constructor() {
         super("game");
+        this.precompMapping = [];
     }
 
     async initProgram() {
@@ -156,12 +181,89 @@ class RTR extends Prog {
             }
         }
 
+        //generate side to sample mapping
+        this.samplesLength = 40;
+        let sampleCounter = 0;
+        loop1:
+        for(let k = 1; k < Chunk_Size-1; k++) {
+            for(let j = 1; j < Chunk_Size-1; j++) {
+                for(let i = 1; i < Chunk_Size-1; i++) {
+                    let material = this.blocks[vec3ToLin([i,j,k], Chunk_Size)];
+                    if(material != -1) {
+                        if(this.getAdjacentBlock([i-1, j, k]) == -1) {
+                            this.precompMapping[vec3ToLin([i, j, k], Chunk_Size) + 4096 * 0] = sampleCounter; 
+                            sampleCounter++;
+                        }
+                        if(this.getAdjacentBlock([i+1, j, k]) == -1) {
+                            this.precompMapping[vec3ToLin([i, j, k], Chunk_Size) + 4096 * 1] = sampleCounter; 
+                            sampleCounter++;
+                        }
+                        if(this.getAdjacentBlock([i, j-1, k]) == -1) {
+                            this.precompMapping[vec3ToLin([i, j, k], Chunk_Size) + 4096 * 2] = sampleCounter; 
+                            sampleCounter++;
+                        }
+                        if(this.getAdjacentBlock([i, j+1, k]) == -1) {
+                            this.precompMapping[vec3ToLin([i, j, k], Chunk_Size) + 4096 * 3] = sampleCounter; 
+                            sampleCounter++;
+                        }
+                        if(this.getAdjacentBlock([i, j, k-1]) == -1) {
+                            this.precompMapping[vec3ToLin([i, j, k], Chunk_Size) + 4096 * 4] = sampleCounter; 
+                            sampleCounter++;
+                        }
+                        if(this.getAdjacentBlock([i, j, k+1]) == -1) {
+                            this.precompMapping[vec3ToLin([i, j, k], Chunk_Size) + 4096 * 5] = sampleCounter; 
+                            sampleCounter++;
+                        }
+
+                        if(sampleCounter >= this.samplesLength*this.samplesLength) {
+                            break loop1;
+                        }
+                    }
+                }
+            }
+        }
+        const alignment = 1;
+        gl.pixelStorei(gl.UNPACK_ALIGNMENT, alignment);
+
+        this.precompTex = gl.createTexture();
+        gl.activeTexture(gl.TEXTURE2);
+        gl.bindTexture(gl.TEXTURE_2D, this.precompTex);
+        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA32F, 4096, 4096, 0, gl.RGBA, gl.FLOAT, null);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+
+        this.precompMapping[4096*6 + 4096-1 + 1] = 0;
+        this.precompMappingData = gl.createTexture();
+        gl.activeTexture(gl.TEXTURE3);
+        gl.bindTexture(gl.TEXTURE_2D, this.precompMappingData);
+        gl.texImage2D(gl.TEXTURE_2D, 0, gl.R32I, 4096, 6, 0, gl.RED_INTEGER, gl.INT, new Int32Array(this.precompMapping));
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+
+
+        gl.uniform1i(this.u_("precompTex"), 2);
+        gl.uniform1i(this.u_("precompMappingData"), 3);
+        gl.uniform1i(this.u_("precompUsed"), 0);
+
         gl.uniform1iv(this.u_("blocks"), new Int16Array(this.blocks));
         gl.uniform1fv(this.u_("materials[0].albedoFactor"), new Float32Array([0.8]));
-        gl.uniform3fv(this.u_("materials[0].albedo"), new Float32Array([0.6, 0.8, 0.8]));
-        gl.uniform1fv(this.u_("materials[1].albedoFactor"), new Float32Array([0.6]));
-        gl.uniform3fv(this.u_("materials[1].albedo"), new Float32Array([0.3, 0.2, 0.8]));
-        gl.uniform1f(this.u_("materials[1].reflectivity"), 0.2);
+        gl.uniform3fv(this.u_("materials[0].albedo"), new Float32Array([0.4, 0.8, 0.8]));
+        gl.uniform1f(this.u_("materials[1].reflectivity"), 0.4);
+        gl.uniform1fv(this.u_("materials[1].albedoFactor"), new Float32Array([0.8]));
+        gl.uniform3fv(this.u_("materials[1].albedo"), new Float32Array([0.8, 0.2, 0.8]));
+        gl.uniform1f(this.u_("materials[1].reflectivity"), 0.4);
+    }
+
+    setTextureContent(data) {
+        gl.activeTexture(gl.TEXTURE2);
+        gl.bindTexture(gl.TEXTURE_2D, this.precompTex);
+        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA32F, 4096, 4096, 0, gl.RGBA, gl.FLOAT, data);
+        gl.generateMipmap(gl.TEXTURE_2D);
+        gl.uniform1i(this.u_("precompUsed"), 1);
     }
 
     resize() {
@@ -181,18 +283,9 @@ class Precomputer extends Prog {
     constructor() {
         super("precomputer");
         this.clearEnabled = false;
-        this.pixelsPerSample = 64;
-        this.samplesLength = 60;
+        this.samplesLength = 40;
         this.samplesPacked = new Array(4020);
         this.presentProg = new Prog("present");
-    }
-
-    getAdjacentBlock(vec) {
-        let lin = vec3ToLin(vec, Chunk_Size);
-        if(lin < 0 || lin >= this.blocks.length) {
-            return -1;
-        }
-        return this.blocks[lin];
     }
     
 
@@ -266,15 +359,28 @@ class Precomputer extends Prog {
         }
         // debugger;
         
+        //pack this.samplesPacked to int texture
+        this.dataTexture = gl.createTexture();
+        gl.activeTexture(gl.TEXTURE1);
+        gl.bindTexture(gl.TEXTURE_2D, this.dataTexture);
+        gl.texImage2D(gl.TEXTURE_2D, 0, gl.R32I, this.samplesPacked.length, 1, 0, gl.RED_INTEGER, gl.INT, new Int32Array(this.samplesPacked));
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+        gl.uniform1i(this.u_("packedDataTex"), 1);
+
+
         //create texture
         this.tex = gl.createTexture();
+        gl.activeTexture(gl.TEXTURE0);
         gl.bindTexture(gl.TEXTURE_2D, this.tex);
         gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA32F, 4096, 4096, 0, gl.RGBA, gl.FLOAT, null);
         gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
         gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST); 
         gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
         gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
-
+        
         //create framebuffer
         this.fbo = gl.createFramebuffer();
         gl.bindFramebuffer(gl.FRAMEBUFFER, this.fbo);
@@ -289,13 +395,13 @@ class Precomputer extends Prog {
 
         //materials
         gl.uniform1fv(this.u_("materials[0].albedoFactor"), new Float32Array([0.8]));
-        gl.uniform3fv(this.u_("materials[0].albedo"), new Float32Array([0.6, 0.8, 0.8]));
-        gl.uniform1fv(this.u_("materials[1].albedoFactor"), new Float32Array([0.6]));
-        gl.uniform3fv(this.u_("materials[1].albedo"), new Float32Array([0.3, 0.2, 0.8]));
-        gl.uniform1f(this.u_("materials[1].reflectivity"), 0.2);
+        gl.uniform3fv(this.u_("materials[0].albedo"), new Float32Array([0.4, 0.8, 0.8]));
+        gl.uniform1f(this.u_("materials[1].reflectivity"), 0.4);
+        gl.uniform1fv(this.u_("materials[1].albedoFactor"), new Float32Array([0.8]));
+        gl.uniform3fv(this.u_("materials[1].albedo"), new Float32Array([0.8, 0.2, 0.8]));
+        gl.uniform1f(this.u_("materials[1].reflectivity"), 0.4);
 
         //samples
-        gl.uniform1iv(this.u_("packedData"), new Int32Array(this.samplesPacked));
         gl.uniform1i(this.u_("sampleCount"), sampleCounter);
 
         // INIT PRESENT SUBPROGRAM
@@ -306,6 +412,25 @@ class Precomputer extends Prog {
         gl.uniform1f(this.presentProg.u_("texSize"), 4096);
 
     }
+
+    setTextureContent(float32Data) {
+        gl.bindTexture(gl.TEXTURE_2D, this.tex);
+        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA32F, 4096, 4096, 0, gl.RGBA, gl.FLOAT, float32Data);
+    }
+
+    getTextureContent() {
+        //get data from framebuffer;
+        let data = new Float32Array(4096*4096*4);
+        gl.bindFramebuffer(gl.FRAMEBUFFER, this.fbo);
+        gl.readPixels(0, 0, 4096, 4096, gl.RGBA, gl.FLOAT, data);
+        gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+        return data;
+        
+
+        // var data = new Uint8Array(4096 * 4096 * 4);
+        // gl.readPixels(0, 0, 4096, 4096, gl.RGBA, gl.UNSIGNED_BYTE, data);
+        // return data;
+    }
     prepareDraw(seed, cameraPos, cameraVec) {
 
         gl.bindFramebuffer(gl.FRAMEBUFFER, this.fbo);
@@ -313,8 +438,8 @@ class Precomputer extends Prog {
         super.prepareDraw();
         
         gl.uniform1f(this.u_("seed"), seed);
-        // gl.uniform3f(this.u_("cameraPos"), cameraPos[0], cameraPos[1], cameraPos[2]);
-        // gl.uniform3f(this.u_("cameraVec"), cameraVec[0], cameraVec[1], cameraVec[2]);
+        gl.uniform3f(this.u_("cameraPos"), cameraPos[0], cameraPos[1], cameraPos[2]);
+        gl.uniform3f(this.u_("cameraVec"), cameraVec[0], cameraVec[1], cameraVec[2]);
     }
     postDraw() {
         gl.bindFramebuffer(gl.FRAMEBUFFER, null);
@@ -356,6 +481,11 @@ class App {
         this.keyupHandler = this.keyup.bind(this);
         this.pointerlockchangeHandler = this.pointerlockchange.bind(this);
         this.clickHandler = this.click.bind(this);
+        this.filedropHandler = this.filedrop.bind(this);
+        this.dragoverHandler = this.dragover.bind(this);
+
+        canvas.addEventListener("drop", this.filedropHandler);
+        canvas.addEventListener("dragover", this.dragoverHandler);
         window.addEventListener('keydown',this.keydownHandler,false);
         window.addEventListener('keyup',this.keyupHandler,false);
         document.addEventListener('pointerlockchange', this.pointerlockchangeHandler, false);
@@ -378,10 +508,14 @@ class App {
         
 
         //INIT PROGRAMS
-        let editor_prog = new Precomputer();
+        let baking_prog = new Precomputer();
+        let editor_prog = new RTR();
+
+        await baking_prog.initProgram();
         await editor_prog.initProgram();
         
         this.programs.push(editor_prog);
+        this.programs.push(baking_prog);
         
         gl.viewport(0, 0, canvas.width, canvas.height);
 
@@ -390,6 +524,21 @@ class App {
         this.resizeCanvasToDisplaySize([{target: canvas}]);
         //start rendering cycle
         window.requestAnimationFrame(this.draw.bind(this));
+    }
+    dragover(e) {
+        e.preventDefault();
+    }
+    filedrop(e) {
+        e.preventDefault();
+        e.stopPropagation();
+        let file = e.dataTransfer.files[0];
+        let reader = new FileReader();
+        reader.onload = (e) => {
+            let data = e.target.result;
+            let float32Data = new Float32Array(data);
+            this.programs[this.currentProgram].setTextureContent(float32Data);
+        }
+        reader.readAsArrayBuffer(file);
     }
     keyup(e){
         if(e.repeat) return;
@@ -432,6 +581,22 @@ class App {
         if(e.key == "Shift"){
             this.move[1] = -1;
         }
+        if(e.key == "p") {
+            if(this.currentProgram == 1) {
+                let program = this.programs[1];
+                program.wannaSwitch = false;
+                let textureContent = program.getTextureContent();
+                //save binary data
+                saveByteArray([textureContent], 'baked.skb');
+            }
+        }
+        if(e.key == "1") {
+            this.currentProgram = 0;
+        }
+        if(e.key == "2") {
+            this.currentProgram = 1;
+        }
+
     }
 
     pointerlockchange(e) {
@@ -507,13 +672,13 @@ class App {
 
         //draw
         let program = this.programs[this.currentProgram];
+
         let seed = Math.random()*timestamp * 1.623426 % 1;
         program.prepareDraw(seed, this.cameraPos, this.cameraVec);
 
         gl.drawArrays(gl.TRIANGLES, 0, 6);
 
         program.postDraw();
-
 
         // setTimeout(() => {
         window.requestAnimationFrame(this.draw.bind(this));

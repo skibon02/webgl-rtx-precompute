@@ -1,25 +1,28 @@
 #version 300 es
 
 precision highp float;
+precision highp isampler2D;
+precision highp isampler3D;
 
 in vec2 pos;
 
-const int Chunk_Size = 15;
 
-
-uniform int u_blocks[Chunk_Size*Chunk_Size*Chunk_Size];
 uniform vec2 u_resolution;
 uniform float u_seed;
-
 uniform vec3 u_cameraPos;
 uniform vec3 u_cameraVec;
 
-
+//blocks precompute data
 const float PixelsPerSample = 100.0;
 const int SampleLength = 40;
 uniform sampler2D u_precompTex;
-uniform highp isampler2D u_precompMappingData;
+uniform isampler2D u_precompMappingData;
 uniform int u_precompUsed;
+
+//scene data
+uniform ivec3 u_sceneSize;  //x,y,z dimensions
+uniform isampler3D u_blocksData;    // material at block x+y*sceneSize.x+z*sceneSize.x*sceneSize.y
+
 struct Material {
     vec3 albedo;
     vec3 emission;
@@ -28,10 +31,10 @@ struct Material {
     float isGlass;
     vec3 luminosity;
 };
-
 uniform Material[100] u_materials;
 
-// uniform sampler2D u_texture;
+//      DATA SECTION END
+
 
 
 const float PI = 3.1415926535897932384626433832795;
@@ -87,7 +90,6 @@ void createCoordinateSystem(vec3 normal, out vec3 tangent, out vec3 bitangent) {
     bitangent = cross(normal, tangent);
 }
 
-// //Scene
 // const int numSpheres = 4;
 // Sphere spheres[numSpheres] = Sphere[](
 //     //metal
@@ -151,7 +153,7 @@ Intersection intersectBlocks(Ray ray) {
 
     vec3 rayDirInv = 1.0 / ray.dir;
     vec3 tMin = (vec3(0.0) - ray.origin) * rayDirInv;
-    vec3 tMax = (vec3(Chunk_Size) - ray.origin) * rayDirInv;
+    vec3 tMax = (vec3(u_sceneSize) - ray.origin) * rayDirInv;
     vec3 t1 = min(tMin, tMax);
     vec3 t2 = max(tMin, tMax);
     float tNear = max(max(t1.x, t1.y), t1.z);
@@ -197,10 +199,15 @@ Intersection intersectBlocks(Ray ray) {
             t += mint;
             r_pos += ray.dir * mint;
 
-            vec3 blockpos = floor(r_pos + eps*ray.dir);
-            int blockPosLin = int(blockpos.x) + int(blockpos.y) * Chunk_Size + int(blockpos.z) * Chunk_Size * Chunk_Size;
-            int block = u_blocks[blockPosLin];
-
+            ivec3 blockpos = ivec3(floor(r_pos + eps*ray.dir)); // ok
+            if(blockpos.x < 0 || blockpos.x >= u_sceneSize.x ||
+                blockpos.y < 0 || blockpos.y >= u_sceneSize.y ||
+                blockpos.z < 0 || blockpos.z >= u_sceneSize.z) {
+                break;
+            }
+            int blockPosLin = blockpos.x + blockpos.y * u_sceneSize.x + blockpos.z * u_sceneSize.x * u_sceneSize.y; // ok
+            int block = texelFetch(u_blocksData, blockpos, 0).r; // ok
+            
             if (block != -1) {
                 res.distance = t;
                 res.position = r_pos;
@@ -227,20 +234,19 @@ Intersection intersectBlocks(Ray ray) {
                 if(res.normal.z == 1.0) {
                     side = 5;
                 }
-                int sampleLocLin = texelFetch(u_precompMappingData, ivec2(blockPosLin, side), 0).r;
+                int sampleLocLin = texelFetch(u_precompMappingData, ivec2(blockPosLin, side), 0).r; // blockpos to sample location
                 ivec2 sampleLoc = ivec2(sampleLocLin % SampleLength, sampleLocLin / SampleLength);
-                vec2 sampleLocalOffset;
-                if(res.normal.x != 0.0)
-                    sampleLocalOffset = vec2(r_pos.y - blockpos.y, r_pos.z - blockpos.z);
-                if(res.normal.y != 0.0)
-                    sampleLocalOffset = vec2(r_pos.x - blockpos.x, r_pos.z - blockpos.z);
-                if(res.normal.z != 0.0)
-                    sampleLocalOffset = vec2(r_pos.x - blockpos.x, r_pos.y - blockpos.y);
 
-                // ivec2 sampleLocalPos = ivec2(int(sampleLocalOffset.x * PixelsPerSample - 1.0), int(sampleLocalOffset.y*PixelsPerSample - 1.0));
-                // ivec2 samplePos = sampleLocalPos + sampleLoc * SampleLength;
-                vec2 sampleLocalPos = vec2(sampleLocalOffset.x * PixelsPerSample - 1.0, sampleLocalOffset.y*PixelsPerSample - 1.0);
-                vec2 samplePos = sampleLocalPos + vec2(sampleLoc * int(PixelsPerSample));
+                vec2 sampleLocalOffset; // offset in block pos 0..1
+                if(res.normal.x != 0.0)
+                    sampleLocalOffset = vec2(r_pos.y - float(blockpos.y), r_pos.z - float(blockpos.z));
+                if(res.normal.y != 0.0)
+                    sampleLocalOffset = vec2(r_pos.x - float(blockpos.x), r_pos.z - float(blockpos.z));
+                if(res.normal.z != 0.0)
+                    sampleLocalOffset = vec2(r_pos.x - float(blockpos.x), r_pos.y - float(blockpos.y));
+
+                vec2 sampleLocalPos = vec2(sampleLocalOffset.x * PixelsPerSample - 1.0, sampleLocalOffset.y*PixelsPerSample - 1.0); // position in texture 0..PixelsPerSample
+                vec2 samplePos = sampleLocalPos + vec2(sampleLoc * int(PixelsPerSample)); //position in texture 0..4096
                 
                 vec4 precompPixel = texture(u_precompTex, samplePos / 4096.0);
                 // vec4 precompPixel = texelFetch(u_precompTex, ivec2(samplePos), 0);

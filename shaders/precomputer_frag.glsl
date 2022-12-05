@@ -2,6 +2,8 @@
 //FUCK WEBGL LIMIT 4096 UNIFORMS
 
 precision highp float;
+precision highp isampler3D;
+precision highp isampler2D;
 
 in vec2 pos;
 
@@ -14,6 +16,11 @@ uniform float u_seed;
 
 uniform vec3 u_cameraPos;
 uniform vec3 u_cameraVec;
+
+//scene data
+uniform ivec3 u_sceneSize;  //x,y,z dimensions
+uniform isampler3D u_blocksData;    // material at block x+y*sceneSize.x+z*sceneSize.x*sceneSize.y
+
 struct Material {
     vec3 albedo;
     vec3 emission;
@@ -29,7 +36,7 @@ uniform Material[2] u_materials;
 const int PixelsPerSample = 100;
 const int SampleLength = 40;
 uniform int u_sampleCount;
-uniform highp isampler2D u_packedDataTex;
+uniform isampler2D u_packedDataTex;
 
 int get_block(int i) {
     return int(texelFetch(u_packedDataTex, ivec2(i, 0), 0).r)  % pack_factor - 1;

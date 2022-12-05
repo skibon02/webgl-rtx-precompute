@@ -1,5 +1,4 @@
 let gl;
-const Chunk_Size = 15;
 
 function lockError(e){
     console.log('pointer lock failed');
@@ -35,7 +34,7 @@ function cyrb128(str) {
     return [(h1^h2^h3^h4)>>>0, (h2^h1)>>>0, (h3^h1)>>>0, (h4^h1)>>>0];
 }
 function vec3ToLin(vec, sz) {
-    return vec[0] + vec[1] * sz + vec[2] * sz * sz;
+    return vec[0] + vec[1] * sz[0] + vec[2] * sz[0] * sz[1];
 }
 
 //encode block_material, sample xyz, sample rotation
@@ -58,6 +57,33 @@ var saveByteArray = (function () {
     };
 }());
 
+
+// GEN MAP
+let map_blocks_dims = [15, 15, 15];
+let map_blocks = new Array(map_blocks_dims[0] * map_blocks_dims[1] * map_blocks_dims[2]);
+map_blocks.fill(-1);
+let map_prefix = "incredible_";
+let map_seed = cyrb128(map_prefix + "map1");
+let rand = sfc32(map_seed[0], map_seed[1], map_seed[2], map_seed[3]);
+
+for(let i = 1; i < map_blocks_dims[0]-1; i++) {
+    for(let j = 1; j < map_blocks_dims[1]-1; j++) {
+        for(let k = 1; k < map_blocks_dims[2]-1; k++) {
+            if(rand() < 0.12) {
+                if(rand() < 0.5) {
+                    map_blocks[vec3ToLin([i,j,k], map_blocks_dims)] = 1;
+                } else {
+                    map_blocks[vec3ToLin([i,j,k], map_blocks_dims)] = 0;
+                }
+            }
+            
+        }
+    }
+}
+
+
+let sharedResources = {};
+
 class Prog {
     constructor(name) {
         this.name = name;
@@ -66,7 +92,7 @@ class Prog {
     }
 
     getAdjacentBlock(vec) {
-        let lin = vec3ToLin(vec, Chunk_Size);
+        let lin = vec3ToLin(vec, map_blocks_dims);
         if(lin < 0 || lin >= this.blocks.length) {
             return -1;
         }
@@ -160,58 +186,40 @@ class RTR extends Prog {
         await super.initProgram();
         gl.uniform2f(this.u_("resolution"), gl.canvas.width, gl.canvas.height);
         
-        this.blocks = new Array(Chunk_Size * Chunk_Size * Chunk_Size);
-        this.blocks.fill(-1);
-        let prefix = "incredible_";
-        let seed = cyrb128(prefix + "map1");
-        let rand = sfc32(seed[0], seed[1], seed[2], seed[3]);
+        this.blocks = map_blocks;
 
-        for(let i = 1; i < Chunk_Size-1; i++) {
-            for(let j = 1; j < Chunk_Size-1; j++) {
-                for(let k = 1; k < Chunk_Size-1; k++) {
-                    if(rand() < 0.12) {
-                        if(rand() < 0.5) {
-                            this.blocks[i + j * Chunk_Size + k * Chunk_Size * Chunk_Size] = 1;
-                        } else {
-                            this.blocks[i + j * Chunk_Size + k * Chunk_Size * Chunk_Size] = 0;
-                        }
-                    }
-                    
-                }
-            }
-        }
 
         //generate side to sample mapping
         this.samplesLength = 40;
         let sampleCounter = 0;
         loop1:
-        for(let k = 1; k < Chunk_Size-1; k++) {
-            for(let j = 1; j < Chunk_Size-1; j++) {
-                for(let i = 1; i < Chunk_Size-1; i++) {
-                    let material = this.blocks[vec3ToLin([i,j,k], Chunk_Size)];
+        for(let k = 1; k < map_blocks_dims[0]-1; k++) {
+            for(let j = 1; j < map_blocks_dims[1]-1; j++) {
+                for(let i = 1; i < map_blocks_dims[2]-1; i++) {
+                    let material = this.blocks[vec3ToLin([i,j,k], map_blocks_dims)];
                     if(material != -1) {
                         if(this.getAdjacentBlock([i-1, j, k]) == -1) {
-                            this.precompMapping[vec3ToLin([i, j, k], Chunk_Size) + 4096 * 0] = sampleCounter; 
+                            this.precompMapping[vec3ToLin([i, j, k], map_blocks_dims) + 4096 * 0] = sampleCounter; 
                             sampleCounter++;
                         }
                         if(this.getAdjacentBlock([i+1, j, k]) == -1) {
-                            this.precompMapping[vec3ToLin([i, j, k], Chunk_Size) + 4096 * 1] = sampleCounter; 
+                            this.precompMapping[vec3ToLin([i, j, k], map_blocks_dims) + 4096 * 1] = sampleCounter; 
                             sampleCounter++;
                         }
                         if(this.getAdjacentBlock([i, j-1, k]) == -1) {
-                            this.precompMapping[vec3ToLin([i, j, k], Chunk_Size) + 4096 * 2] = sampleCounter; 
+                            this.precompMapping[vec3ToLin([i, j, k], map_blocks_dims) + 4096 * 2] = sampleCounter; 
                             sampleCounter++;
                         }
                         if(this.getAdjacentBlock([i, j+1, k]) == -1) {
-                            this.precompMapping[vec3ToLin([i, j, k], Chunk_Size) + 4096 * 3] = sampleCounter; 
+                            this.precompMapping[vec3ToLin([i, j, k], map_blocks_dims) + 4096 * 3] = sampleCounter; 
                             sampleCounter++;
                         }
                         if(this.getAdjacentBlock([i, j, k-1]) == -1) {
-                            this.precompMapping[vec3ToLin([i, j, k], Chunk_Size) + 4096 * 4] = sampleCounter; 
+                            this.precompMapping[vec3ToLin([i, j, k], map_blocks_dims) + 4096 * 4] = sampleCounter; 
                             sampleCounter++;
                         }
                         if(this.getAdjacentBlock([i, j, k+1]) == -1) {
-                            this.precompMapping[vec3ToLin([i, j, k], Chunk_Size) + 4096 * 5] = sampleCounter; 
+                            this.precompMapping[vec3ToLin([i, j, k], map_blocks_dims) + 4096 * 5] = sampleCounter; 
                             sampleCounter++;
                         }
 
@@ -222,17 +230,9 @@ class RTR extends Prog {
                 }
             }
         }
+
         const alignment = 1;
         gl.pixelStorei(gl.UNPACK_ALIGNMENT, alignment);
-
-        this.precompTex = gl.createTexture();
-        gl.activeTexture(gl.TEXTURE2);
-        gl.bindTexture(gl.TEXTURE_2D, this.precompTex);
-        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA32F, 4096, 4096, 0, gl.RGBA, gl.FLOAT, null);
-        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
-        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
-        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
-        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
 
         this.precompMapping[4096*6 + 4096-1 + 1] = 0;
         this.precompMappingData = gl.createTexture();
@@ -244,12 +244,18 @@ class RTR extends Prog {
         gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
         gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
 
-
+        //set textures
+        //shared:
         gl.uniform1i(this.u_("precompTex"), 2);
+        gl.uniform1i(this.u_("blocksData"), 4);
+        //local:
         gl.uniform1i(this.u_("precompMappingData"), 3);
-        gl.uniform1i(this.u_("precompUsed"), 0);
 
-        gl.uniform1iv(this.u_("blocks"), new Int16Array(this.blocks));
+        //set scene data
+        gl.uniform1i(this.u_("precompUsed"), 0);
+        gl.uniform3iv(this.u_("sceneSize"), map_blocks_dims);
+
+        //set scene materials
         gl.uniform1fv(this.u_("materials[0].albedoFactor"), new Float32Array([0.8]));
         gl.uniform3fv(this.u_("materials[0].albedo"), new Float32Array([0.4, 0.8, 0.8]));
         gl.uniform1f(this.u_("materials[1].reflectivity"), 0.4);
@@ -257,13 +263,18 @@ class RTR extends Prog {
         gl.uniform3fv(this.u_("materials[1].albedo"), new Float32Array([0.8, 0.2, 0.8]));
         gl.uniform1f(this.u_("materials[1].reflectivity"), 0.4);
     }
+    rtxON() {
+        gl.uniform1i(this.u_("precompUsed"), 1);
+    }
+    rtxOFF() {
+        gl.uniform1i(this.u_("precompUsed"), 0);
+    }
 
     setTextureContent(data) {
         gl.activeTexture(gl.TEXTURE2);
-        gl.bindTexture(gl.TEXTURE_2D, this.precompTex);
+        gl.bindTexture(gl.TEXTURE_2D, sharedResources.precompTex);
         gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA32F, 4096, 4096, 0, gl.RGBA, gl.FLOAT, data);
-        gl.generateMipmap(gl.TEXTURE_2D);
-        gl.uniform1i(this.u_("precompUsed"), 1);
+        this.rtxON();
     }
 
     resize() {
@@ -294,36 +305,17 @@ class Precomputer extends Prog {
         await super.initProgram();
         gl.uniform2f(this.u_("resolution"), 4096, 4096);
         
-        this.blocks = new Array(Chunk_Size * Chunk_Size * Chunk_Size);
-        this.blocks.fill(-1);
-        let prefix = "incredible_";
-        let seed = cyrb128(prefix + "map1");
-        let rand = sfc32(seed[0], seed[1], seed[2], seed[3]);
-
-        for(let i = 1; i < Chunk_Size-1; i++) {
-            for(let j = 1; j < Chunk_Size-1; j++) {
-                for(let k = 1; k < Chunk_Size-1; k++) {
-                    if(rand() < 0.12) {
-                        if(rand() < 0.5) {
-                            this.blocks[i + j * Chunk_Size + k * Chunk_Size * Chunk_Size] = 1;
-                        } else {
-                            this.blocks[i + j * Chunk_Size + k * Chunk_Size * Chunk_Size] = 0;
-                        }
-                    }
-                    
-                }
-            }
-        }
-        for(let i = 0; i < Chunk_Size * Chunk_Size * Chunk_Size; i++) {
-            this.samplesPacked[i] = pack5_16([this.blocks[i], 0, 0, 0, -3], Chunk_Size);
+        this.blocks = map_blocks;
+        for(let i = 0; i < map_blocks_dims[0] * map_blocks_dims[1] * map_blocks_dims[2]; i++) {
+            this.samplesPacked[i] = pack5_16([this.blocks[i], 0, 0, 0, -3], map_blocks_dims[0]);
         }
 
         let sampleCounter = 0;
         loop1:
-        for(let k = 1; k < Chunk_Size-1; k++) {
-            for(let j = 1; j < Chunk_Size-1; j++) {
-                for(let i = 1; i < Chunk_Size-1; i++) {
-                    let material = this.blocks[vec3ToLin([i,j,k], Chunk_Size)];
+        for(let k = 1; k < map_blocks_dims[0]-1; k++) {
+            for(let j = 1; j < map_blocks_dims[1]-1; j++) {
+                for(let i = 1; i < map_blocks_dims[2]-1; i++) {
+                    let material = this.blocks[vec3ToLin([i,j,k], map_blocks_dims)];
                     if(material != -1) {
                         if(this.getAdjacentBlock([i-1, j, k]) == -1) {
                             this.samplesPacked[sampleCounter] += pack5_16([-1, i,j,k, -1]);
@@ -368,23 +360,11 @@ class Precomputer extends Prog {
         gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
         gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
         gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
-        gl.uniform1i(this.u_("packedDataTex"), 1);
-
-
-        //create texture
-        this.tex = gl.createTexture();
-        gl.activeTexture(gl.TEXTURE0);
-        gl.bindTexture(gl.TEXTURE_2D, this.tex);
-        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA32F, 4096, 4096, 0, gl.RGBA, gl.FLOAT, null);
-        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
-        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST); 
-        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
-        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
         
         //create framebuffer
         this.fbo = gl.createFramebuffer();
         gl.bindFramebuffer(gl.FRAMEBUFFER, this.fbo);
-        gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, this.tex, 0);
+        gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, sharedResources.precompTex, 0);
         gl.bindFramebuffer(gl.FRAMEBUFFER, null);
 
 
@@ -393,7 +373,19 @@ class Precomputer extends Prog {
         gl.blendFunc(gl.ONE, gl.ONE);
 
 
-        //materials
+        //set scene data
+        gl.uniform1i(this.u_("sampleCount"), sampleCounter);
+        gl.uniform3iv(this.u_("sceneSize"), map_blocks_dims);
+
+        //textures
+        //shared resources:
+        gl.uniform1i(this.u_("blocksData"), 4);
+
+        //local resources:
+        gl.uniform1i(this.u_("packedDataTex"), 1);
+
+
+        //set scene materials
         gl.uniform1fv(this.u_("materials[0].albedoFactor"), new Float32Array([0.8]));
         gl.uniform3fv(this.u_("materials[0].albedo"), new Float32Array([0.4, 0.8, 0.8]));
         gl.uniform1f(this.u_("materials[1].reflectivity"), 0.4);
@@ -401,20 +393,17 @@ class Precomputer extends Prog {
         gl.uniform3fv(this.u_("materials[1].albedo"), new Float32Array([0.8, 0.2, 0.8]));
         gl.uniform1f(this.u_("materials[1].reflectivity"), 0.4);
 
-        //samples
-        gl.uniform1i(this.u_("sampleCount"), sampleCounter);
-
         // INIT PRESENT SUBPROGRAM
-
         await this.presentProg.initProgram();
         gl.uniform2f(this.presentProg.u_("resolution"), 1920, 1080);
-        gl.uniform1i(this.presentProg.u_("texture"), 0);
+        gl.uniform1i(this.presentProg.u_("texture"), 2);
         gl.uniform1f(this.presentProg.u_("texSize"), 4096);
 
     }
 
     setTextureContent(float32Data) {
-        gl.bindTexture(gl.TEXTURE_2D, this.tex);
+        gl.activeTexture(gl.TEXTURE2);
+        gl.bindTexture(gl.TEXTURE_2D, sharedResources.precompTex);
         gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA32F, 4096, 4096, 0, gl.RGBA, gl.FLOAT, float32Data);
     }
 
@@ -506,6 +495,24 @@ class App {
             return alert('No webGL :(');
         }
         
+        //INIT shared resources
+        // unit2: precomputed texture
+        sharedResources.precompTex = gl.createTexture();
+        gl.activeTexture(gl.TEXTURE2);
+        gl.bindTexture(gl.TEXTURE_2D, sharedResources.precompTex);
+        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA32F, 4096, 4096, 0, gl.RGBA, gl.FLOAT, null);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+
+        // unit4: blocks data texture
+        sharedResources.blocksDataTex = gl.createTexture();
+        gl.activeTexture(gl.TEXTURE4);
+        gl.bindTexture(gl.TEXTURE_3D, sharedResources.blocksDataTex);
+        gl.texImage3D(gl.TEXTURE_3D, 0, gl.R32I, map_blocks_dims[0], map_blocks_dims[1], map_blocks_dims[2], 0, gl.RED_INTEGER, gl.INT, new Int32Array(map_blocks));
+        gl.texParameteri(gl.TEXTURE_3D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+        gl.texParameteri(gl.TEXTURE_3D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
 
         //INIT PROGRAMS
         let baking_prog = new Precomputer();
@@ -595,6 +602,14 @@ class App {
         }
         if(e.key == "2") {
             this.currentProgram = 1;
+        }
+        if(e.key == "o") {
+            let program = this.programs[0];
+            program.rtxON();
+        }
+        if(e.key == "i") {
+            let program = this.programs[0];
+            program.rtxOFF();
         }
 
     }

@@ -1,5 +1,4 @@
 #version 300 es
-//FUCK WEBGL LIMIT 4096 UNIFORMS
 
 precision highp float;
 precision highp isampler3D;
@@ -7,15 +6,19 @@ precision highp isampler2D;
 
 in vec2 pos;
 
-const int Chunk_Size = 15;
-
-const int buf_size = 4020;
-const int pack_factor = 16;
 uniform vec2 u_resolution;
 uniform float u_seed;
-
 uniform vec3 u_cameraPos;
 uniform vec3 u_cameraVec;
+
+//precompute info
+const int buf_size = 4020;
+const int pack_factor = 16;
+uniform int u_sampleCount;
+uniform isampler2D u_packedDataTex;
+
+const int PixelsPerSample = 100;
+const int SampleLength = 40;
 
 //scene data
 uniform ivec3 u_sceneSize;  //x,y,z dimensions
@@ -29,18 +32,9 @@ struct Material {
     float isGlass;
 };
 
-uniform Material[2] u_materials;
+uniform Material[50] u_materials;
 
-//precompute info
-
-const int PixelsPerSample = 100;
-const int SampleLength = 40;
-uniform int u_sampleCount;
-uniform isampler2D u_packedDataTex;
-
-int get_block(int i) {
-    return int(texelFetch(u_packedDataTex, ivec2(i, 0), 0).r)  % pack_factor - 1;
-}
+//      DATA SECTION END
 
 const float PI = 3.1415926535897932384626433832795;
 const float eps = 1e-5;
@@ -167,7 +161,7 @@ Intersection intersectBlocks(Ray ray) {
 
     vec3 rayDirInv = 1.0 / ray.dir;
     vec3 tMin = (vec3(0.0) - ray.origin) * rayDirInv;
-    vec3 tMax = (vec3(Chunk_Size) - ray.origin) * rayDirInv;
+    vec3 tMax = (vec3(u_sceneSize) - ray.origin) * rayDirInv;
     vec3 t1 = min(tMin, tMax);
     vec3 t2 = max(tMin, tMax);
     float tNear = max(max(t1.x, t1.y), t1.z);
@@ -179,9 +173,8 @@ Intersection intersectBlocks(Ray ray) {
         float t = tNear;
         if(tNear < eps)
             t = 0.0;
-        vec3 pos = ray.origin + ray.dir * t;
+        vec3 r_pos = ray.origin + ray.dir * t;
         vec3 stepdir = sign(ray.dir);
-
 
         int count = 0;
         while(t < tFar - eps) {
@@ -189,27 +182,21 @@ Intersection intersectBlocks(Ray ray) {
 
             vec3 t1 = vec3(0.0);
             if(stepdir.x >= 0.0) {
-                t1.x = (ceil(pos.x + eps) - pos.x) * rayDirInv.x;
+                t1.x = (ceil(r_pos.x + eps) - r_pos.x) * rayDirInv.x;
             } else {
-                t1.x = (floor(pos.x - eps) - pos.x) * rayDirInv.x;
+                t1.x = (floor(r_pos.x - eps) - r_pos.x) * rayDirInv.x;
             }
             if(stepdir.y >= 0.0) {
-                t1.y = (ceil(pos.y + eps) - pos.y) * rayDirInv.y;
+                t1.y = (ceil(r_pos.y + eps) - r_pos.y) * rayDirInv.y;
             } else {
-                t1.y = (floor(pos.y - eps) - pos.y) * rayDirInv.y;
+                t1.y = (floor(r_pos.y - eps) - r_pos.y) * rayDirInv.y;
             }
             if(stepdir.z >= 0.0) {
-                t1.z = (ceil(pos.z + eps) - pos.z) * rayDirInv.z;
+                t1.z = (ceil(r_pos.z + eps) - r_pos.z) * rayDirInv.z;
             } else {
-                t1.z = (floor(pos.z - eps) - pos.z) * rayDirInv.z;
+                t1.z = (floor(r_pos.z - eps) - r_pos.z) * rayDirInv.z;
             }
 
-            if(t1.x == 0.0)
-                t1.x = 100000.0;
-            if(t1.y == 0.0)
-                t1.y = 100000.0;
-            if(t1.z == 0.0)
-                t1.z = 100000.0;
             float mint = min(t1.x, min(t1.y, t1.z));
             if(mint == t1.x) dirmask.x = 1.0;
             else
@@ -217,15 +204,19 @@ Intersection intersectBlocks(Ray ray) {
                 else
                     if(mint == t1.z) dirmask.z = 1.0;
             t += mint;
-            pos += ray.dir * mint;
+            r_pos += ray.dir * mint;
 
-            vec3 blockpos = floor(pos + eps*ray.dir);
-
-            int block = get_block(int(blockpos.x) + int(blockpos.y) * Chunk_Size + int(blockpos.z) * Chunk_Size * Chunk_Size);
+            ivec3 blockpos = ivec3(floor(r_pos + eps*ray.dir));
+            if(blockpos.x < 0 || blockpos.x >= u_sceneSize.x ||
+                blockpos.y < 0 || blockpos.y >= u_sceneSize.y ||
+                blockpos.z < 0 || blockpos.z >= u_sceneSize.z) {
+                break;
+            }
+            int block = texelFetch(u_blocksData, blockpos, 0).r; 
 
             if (block != -1) {
                 res.distance = t;
-                res.position = pos;
+                res.position = r_pos;
                 res.normal = -dirmask * stepdir;
                 res.material = u_materials[block];
                 break;
@@ -335,10 +326,6 @@ void main() {
     if(u_resolution.y > u_resolution.x) {
         fovscale *= u_resolution.y / u_resolution.x;
     }
-
-    //unpack materials info
-    int csc = Chunk_Size * Chunk_Size * Chunk_Size;
-    int shift = 4*4;
     
     
     vec2 texCoord = pos * 0.5 + 0.5; // 0..1

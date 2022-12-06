@@ -6,7 +6,6 @@ precision highp isampler3D;
 
 in vec2 pos;
 
-
 uniform vec2 u_resolution;
 uniform float u_seed;
 uniform vec3 u_cameraPos;
@@ -31,7 +30,7 @@ struct Material {
     float isGlass;
     vec3 luminosity;
 };
-uniform Material[100] u_materials;
+uniform Material[50] u_materials;
 
 //      DATA SECTION END
 
@@ -149,7 +148,6 @@ Intersection intersectSphere(Ray ray, Sphere sphere) {
 
 Intersection intersectBlocks(Ray ray) {
     Intersection res;
-    res.distance == -1.0;
 
     vec3 rayDirInv = 1.0 / ray.dir;
     vec3 tMin = (vec3(0.0) - ray.origin) * rayDirInv;
@@ -167,7 +165,6 @@ Intersection intersectBlocks(Ray ray) {
             t = 0.0;
         vec3 r_pos = ray.origin + ray.dir * t;
         vec3 stepdir = sign(ray.dir);
-
 
         int count = 0;
         while(t < tFar - eps) {
@@ -199,14 +196,14 @@ Intersection intersectBlocks(Ray ray) {
             t += mint;
             r_pos += ray.dir * mint;
 
-            ivec3 blockpos = ivec3(floor(r_pos + eps*ray.dir)); // ok
+            ivec3 blockpos = ivec3(floor(r_pos + eps*ray.dir));
             if(blockpos.x < 0 || blockpos.x >= u_sceneSize.x ||
                 blockpos.y < 0 || blockpos.y >= u_sceneSize.y ||
                 blockpos.z < 0 || blockpos.z >= u_sceneSize.z) {
                 break;
             }
-            int blockPosLin = blockpos.x + blockpos.y * u_sceneSize.x + blockpos.z * u_sceneSize.x * u_sceneSize.y; // ok
-            int block = texelFetch(u_blocksData, blockpos, 0).r; // ok
+            int blockPosLin = blockpos.x + blockpos.y * u_sceneSize.x + blockpos.z * u_sceneSize.x * u_sceneSize.y;
+            int block = texelFetch(u_blocksData, blockpos, 0).r;
             
             if (block != -1) {
                 res.distance = t;

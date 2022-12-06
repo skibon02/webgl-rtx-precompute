@@ -490,6 +490,9 @@ class App {
         if (!gl.getExtension('OES_texture_float_linear')) {
             return alert('need OES_texture_float_linear');
         }
+        if (!gl.getExtension('EXT_float_blend')) {
+            return alert('need EXT_float_blend');
+        }
 
         if (!gl) {
             return alert('No webGL :(');

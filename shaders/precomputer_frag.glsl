@@ -44,6 +44,12 @@ float cur_seed;
 out vec4 outColor;
 
 
+struct SolidLight {
+    vec3 position;
+    vec3 power;
+    float radius;
+};
+
 struct Sphere {
     vec3 center;
     float radius;
@@ -96,34 +102,31 @@ vec3 cosineWeightedDirection(float seed, vec3 normal) {
     return d;
 }
 //Scene
-const int numSpheres = 6;
+const int numSpheres = 2;
 Sphere spheres[numSpheres] = Sphere[](
-    Sphere(vec3(7, 4, -2), 1.0, 
-        Material(
-            vec3(0.0, 0.0, 0.0), 
-            vec3(5000.0, 4000.0, 4500.0) * 3.0, 0.0, 0.8, 0.0)),
-    Sphere(vec3(7, 15.4, -2), 1.0, 
-        Material(
-            vec3(0.0, 0.0, 0.0), 
-            vec3(1000.0, 4000.0, 4500.0) * 3.0, 0.0, 0.8, 0.0)),
-    Sphere(vec3(-2, 4.4, 9), 1.0, 
-        Material(
-            vec3(0.0, 0.0, 0.0), 
-            vec3(4000.0, 1000.0, 4500.0) * 3.0, 0.0, 0.8, 0.0)),
-    Sphere(vec3(7, 6.4, 17), 1.0, 
-        Material(
-            vec3(0.0, 0.0, 0.0), 
-            vec3(4000.0, 4500.0, 1000.0) * 3.0, 0.0, 0.8, 0.0)),
-    Sphere(vec3(5, 9, 5), 1.0, 
-        Material(
-            vec3(0.0, 0.0, 0.0), 
-            vec3(7000.0, 7000.0, 7000.0) * 3.0, 0.0, 0.8, 0.0)),
-
-
     Sphere(vec3(5.0, 5.0, 5.0), 1.0, 
     Material(
         vec3(0.9), 
-        vec3(0.0), 0.0, 0.0, 1.0))
+        vec3(0.0), 0.0, 0.0, 1.0)),
+    
+    Sphere(vec3(7.3, 2.5, 3.5), 0.49, 
+    Material(
+        vec3(1.0, 0.6, 0.8), 
+        vec3(1.0), 0.0, 0.6, 0.0))
+);
+
+
+const int numStaticLights = 6;
+SolidLight staticLights[numStaticLights] = SolidLight[](
+    SolidLight(vec3(7, 4, -2), vec3(13000.0, 13000.0, 13000.0) * 0.3, 1.0),
+    SolidLight(vec3(7, 15.4, -2), vec3(3000.0, 13000.0, 13000.0) * 0.3, 1.0),
+    SolidLight(vec3(-2, 4.4, 9), vec3(13000.0, 3000.0, 13000.0) * 0.3, 1.0),
+    SolidLight(vec3(7, 6.4, 17), vec3(13000.0, 13000.0, 3000.0) * 0.3, 1.0),
+    SolidLight(vec3(5, 9, 5), vec3(23000.0, 23000.0, 23000.0), 1.0),
+
+
+    SolidLight(vec3(8.5, 2.8, 5.5), vec3(150000.0, 10000.0, 50000.0), 0.3)
+    
 );
 
 Intersection intersectSphere(Ray ray, Sphere sphere) {
@@ -172,12 +175,12 @@ Intersection intersectBlocks(Ray ray) {
         int count = 0;
         while(t < tFar - eps) {
             dirmask = vec3(0.0, 0.0, 0.0);
-       
+                   
             if(count > 50) {
                 wrongTrigger = true;
                 break;
             }
-
+            
             vec3 t1 = vec3(0.0);
             if(stepdir.x >= 0.0) {
                 t1.x = (ceil(r_pos.x + eps) - r_pos.x) * rayDirInv.x;
@@ -264,6 +267,16 @@ Intersection intersect(Ray ray) {
 
     for (int i = 0; i < numSpheres; i++) {
         Sphere sphere = spheres[i];
+        Intersection res = intersectSphere(ray, sphere);
+        if (res.distance > eps && (intersection.distance < 0.0 || res.distance < intersection.distance)) {
+            intersection = res;
+        }
+    }
+
+
+    for (int i = 0; i < numStaticLights; i++) {
+        SolidLight solidLight = staticLights[i];
+        Sphere sphere = Sphere(solidLight.position, solidLight.radius, Material(vec3(0.0), vec3(solidLight.power), 0.0, 0.0, 0.0));
         Intersection res = intersectSphere(ray, sphere);
         if (res.distance > eps && (intersection.distance < 0.0 || res.distance < intersection.distance)) {
             intersection = res;

@@ -77,6 +77,9 @@ for(let i = 0; i < map_blocks_dims[0]; i++) {
             if(rand() < 0.15 && j == 2) {
                 map_blocks[vec3ToLin([i,j,k], map_blocks_dims)] = 2;
             }
+            if(rand() < 0.1 && j == 5) {
+                map_blocks[vec3ToLin([i,j,k], map_blocks_dims)] = 3;
+            }
             
         }
     }
@@ -265,6 +268,9 @@ class RTR extends Prog {
 
         gl.uniform1f(this.u_("materials[2].isGlass"), 1.0);
         gl.uniform3fv(this.u_("materials[2].albedo"), new Float32Array([0.8, 0.8, 0.8]));
+
+        gl.uniform1fv(this.u_("materials[3].albedoFactor"), new Float32Array([0.8]));
+        gl.uniform3fv(this.u_("materials[3].albedo"), new Float32Array([0.8, 0.8, 0.8]));
     }
     rtxON() {
         gl.uniform1i(this.u_("precompUsed"), 1);
@@ -300,6 +306,7 @@ class Precomputer extends Prog {
         this.samplesLength = 40;
         this.samplesPacked = new Array(4020);
         this.presentProg = new Prog("present");
+        this.frames = 0;
     }
     
 
@@ -436,6 +443,7 @@ class Precomputer extends Prog {
         gl.uniform3f(this.u_("cameraVec"), cameraVec[0], cameraVec[1], cameraVec[2]);
     }
     postDraw() {
+        this.frames++;
         gl.bindFramebuffer(gl.FRAMEBUFFER, null);
         gl.viewport(0, 0, gl.canvas.width, gl.canvas.height);
 
@@ -606,6 +614,10 @@ class App {
             }
         }
         if(e.key == "1") {
+            if(this.currentProgram != 0) {
+                console.log('total frames: ' + this.programs[1].frames);
+                this.programs[1].frames = 0;
+            }
             this.currentProgram = 0;
         }
         if(e.key == "2") {

@@ -98,24 +98,6 @@ vec3 cosineWeightedDirection(float seed, vec3 normal) {
 //Scene
 const int numSpheres = 6;
 Sphere spheres[numSpheres] = Sphere[](
-    // //metal
-    // Sphere(vec3(-0.75, -1.45, -4.4), 1.05, 
-    // Material(
-    //     vec3(0.8, 0.4, 0.8), 
-    //     vec3(0.0), 1.0, 0.8, false)),
-
-    // //glass
-    // Sphere(vec3(2.0, -2.05, -3.7), 0.5, 
-    // Material(
-    //     vec3(0.9, 1.0, 0.8), 
-    //     vec3(0.0), 0.0, 0.8, true)),
-
-    // Sphere(vec3(-1.75, -1.95, -3.1), 0.6, 
-    // Material(
-    //     vec3(1, 1, 1), 
-    //     vec3(0.0), 0.0, 0.8, false)),
-
-    //light
     Sphere(vec3(7, 4, -2), 1.0, 
         Material(
             vec3(0.0, 0.0, 0.0), 
@@ -166,6 +148,7 @@ Intersection intersectSphere(Ray ray, Sphere sphere) {
     return res;
 }
 
+bool wrongTrigger = false;
 Intersection intersectBlocks(Ray ray) {
     Intersection res;
 
@@ -189,6 +172,11 @@ Intersection intersectBlocks(Ray ray) {
         int count = 0;
         while(t < tFar - eps) {
             dirmask = vec3(0.0, 0.0, 0.0);
+       
+            if(count > 50) {
+                wrongTrigger = true;
+                break;
+            }
 
             vec3 t1 = vec3(0.0);
             if(stepdir.x >= 0.0) {
@@ -205,6 +193,15 @@ Intersection intersectBlocks(Ray ray) {
                 t1.z = (ceil(r_pos.z + eps) - r_pos.z) * rayDirInv.z;
             } else {
                 t1.z = (floor(r_pos.z - eps) - r_pos.z) * rayDirInv.z;
+            }
+            if(stepdir.x == 0.0) {
+                t1.x = 100000.0;
+            }
+            if(stepdir.y == 0.0) {
+                t1.y = 100000.0;
+            }
+            if(stepdir.z == 0.0) {
+                t1.z = 100000.0;
             }
 
             float mint = min(t1.x, min(t1.y, t1.z));
@@ -478,5 +475,8 @@ void main() {
     }
     col /= float(samples_n);
     col *=  finalLumScale;
-    outColor = vec4(col, 1.0) / 1024.0;
+    if(wrongTrigger)
+        outColor = vec4(5000000.0, 0.0, 0.0, 1.0) / 1024.0;
+    else
+        outColor = vec4(col, 1.0) / 1024.0;
 }

@@ -58,23 +58,24 @@ var saveByteArray = (function () {
 }());
 
 
-// GEN MAP
-let map_blocks_dims = [15, 15, 15];
+// MAP INFO
+let map_blocks_dims = [10, 10, 10];
 let map_blocks = new Array(map_blocks_dims[0] * map_blocks_dims[1] * map_blocks_dims[2]);
-map_blocks.fill(-1);
+
 let map_prefix = "incredible_";
 let map_seed = cyrb128(map_prefix + "map1");
 let rand = sfc32(map_seed[0], map_seed[1], map_seed[2], map_seed[3]);
 
-for(let i = 1; i < map_blocks_dims[0]-1; i++) {
-    for(let j = 1; j < map_blocks_dims[1]-1; j++) {
-        for(let k = 1; k < map_blocks_dims[2]-1; k++) {
-            if(rand() < 0.12) {
-                if(rand() < 0.5) {
-                    map_blocks[vec3ToLin([i,j,k], map_blocks_dims)] = 1;
-                } else {
-                    map_blocks[vec3ToLin([i,j,k], map_blocks_dims)] = 0;
-                }
+// randomly gen map
+map_blocks.fill(-1);
+for(let i = 0; i < map_blocks_dims[0]; i++) {
+    for(let j = 0; j < map_blocks_dims[1]; j++) {
+        for(let k = 0; k < map_blocks_dims[2]; k++) {
+            if(rand() < 0.8 && j == 1) {
+                map_blocks[vec3ToLin([i,j,k], map_blocks_dims)] = 0;
+            }
+            if(rand() < 0.15 && j == 2) {
+                map_blocks[vec3ToLin([i,j,k], map_blocks_dims)] = 2;
             }
             
         }
@@ -193,32 +194,32 @@ class RTR extends Prog {
         this.samplesLength = 40;
         let sampleCounter = 0;
         loop1:
-        for(let k = 1; k < map_blocks_dims[0]-1; k++) {
-            for(let j = 1; j < map_blocks_dims[1]-1; j++) {
-                for(let i = 1; i < map_blocks_dims[2]-1; i++) {
+        for(let k = 0; k < map_blocks_dims[0]; k++) {
+            for(let j = 0; j < map_blocks_dims[1]; j++) {
+                for(let i = 0; i < map_blocks_dims[2]; i++) {
                     let material = this.blocks[vec3ToLin([i,j,k], map_blocks_dims)];
                     if(material != -1) {
-                        if(this.getAdjacentBlock([i-1, j, k]) == -1) {
+                        if(this.getAdjacentBlock([i-1, j, k]) == -1 || this.getAdjacentBlock([i-1, j, k]) == 2) {
                             this.precompMapping[vec3ToLin([i, j, k], map_blocks_dims) + 4096 * 0] = sampleCounter; 
                             sampleCounter++;
                         }
-                        if(this.getAdjacentBlock([i+1, j, k]) == -1) {
+                        if(this.getAdjacentBlock([i+1, j, k]) == -1 || this.getAdjacentBlock([i+1, j, k]) == 2) {
                             this.precompMapping[vec3ToLin([i, j, k], map_blocks_dims) + 4096 * 1] = sampleCounter; 
                             sampleCounter++;
                         }
-                        if(this.getAdjacentBlock([i, j-1, k]) == -1) {
+                        if(this.getAdjacentBlock([i, j-1, k]) == -1 || this.getAdjacentBlock([i, j-1, k]) == 2) {
                             this.precompMapping[vec3ToLin([i, j, k], map_blocks_dims) + 4096 * 2] = sampleCounter; 
                             sampleCounter++;
                         }
-                        if(this.getAdjacentBlock([i, j+1, k]) == -1) {
+                        if(this.getAdjacentBlock([i, j+1, k]) == -1 || this.getAdjacentBlock([i, j+1, k]) == 2) {
                             this.precompMapping[vec3ToLin([i, j, k], map_blocks_dims) + 4096 * 3] = sampleCounter; 
                             sampleCounter++;
                         }
-                        if(this.getAdjacentBlock([i, j, k-1]) == -1) {
+                        if(this.getAdjacentBlock([i, j, k-1]) == -1 || this.getAdjacentBlock([i, j, k-1]) == 2) {
                             this.precompMapping[vec3ToLin([i, j, k], map_blocks_dims) + 4096 * 4] = sampleCounter; 
                             sampleCounter++;
                         }
-                        if(this.getAdjacentBlock([i, j, k+1]) == -1) {
+                        if(this.getAdjacentBlock([i, j, k+1]) == -1 || this.getAdjacentBlock([i, j, k+1]) == 2) {
                             this.precompMapping[vec3ToLin([i, j, k], map_blocks_dims) + 4096 * 5] = sampleCounter; 
                             sampleCounter++;
                         }
@@ -261,7 +262,9 @@ class RTR extends Prog {
         gl.uniform1f(this.u_("materials[1].reflectivity"), 0.4);
         gl.uniform1fv(this.u_("materials[1].albedoFactor"), new Float32Array([0.8]));
         gl.uniform3fv(this.u_("materials[1].albedo"), new Float32Array([0.8, 0.2, 0.8]));
-        gl.uniform1f(this.u_("materials[1].reflectivity"), 0.4);
+
+        gl.uniform1f(this.u_("materials[2].isGlass"), 1.0);
+        gl.uniform3fv(this.u_("materials[2].albedo"), new Float32Array([0.8, 0.8, 0.8]));
     }
     rtxON() {
         gl.uniform1i(this.u_("precompUsed"), 1);
@@ -312,32 +315,32 @@ class Precomputer extends Prog {
 
         let sampleCounter = 0;
         loop1:
-        for(let k = 1; k < map_blocks_dims[0]-1; k++) {
-            for(let j = 1; j < map_blocks_dims[1]-1; j++) {
-                for(let i = 1; i < map_blocks_dims[2]-1; i++) {
+        for(let k = 0; k < map_blocks_dims[0]; k++) {
+            for(let j = 0; j < map_blocks_dims[1]; j++) {
+                for(let i = 0; i < map_blocks_dims[2]; i++) {
                     let material = this.blocks[vec3ToLin([i,j,k], map_blocks_dims)];
                     if(material != -1) {
-                        if(this.getAdjacentBlock([i-1, j, k]) == -1) {
+                        if(this.getAdjacentBlock([i-1, j, k]) == -1 || this.getAdjacentBlock([i-1, j, k]) == 2) {
                             this.samplesPacked[sampleCounter] += pack5_16([-1, i,j,k, -1]);
                             sampleCounter++;
                         }
-                        if(this.getAdjacentBlock([i+1, j, k]) == -1) {
+                        if(this.getAdjacentBlock([i+1, j, k]) == -1 || this.getAdjacentBlock([i+1, j, k]) == 2) {
                             this.samplesPacked[sampleCounter] += pack5_16([-1, i,j,k, 1]);
                             sampleCounter++;
                         }
-                        if(this.getAdjacentBlock([i, j-1, k]) == -1) {
+                        if(this.getAdjacentBlock([i, j-1, k]) == -1 || this.getAdjacentBlock([i, j-1, k]) == 2) {
                             this.samplesPacked[sampleCounter] += pack5_16([-1, i,j,k, -2]);
                             sampleCounter++;
                         }
-                        if(this.getAdjacentBlock([i, j+1, k]) == -1) {
+                        if(this.getAdjacentBlock([i, j+1, k]) == -1 || this.getAdjacentBlock([i, j+1, k]) == 2) {
                             this.samplesPacked[sampleCounter] += pack5_16([-1, i,j,k, 2]);
                             sampleCounter++;
                         }
-                        if(this.getAdjacentBlock([i, j, k-1]) == -1) {
+                        if(this.getAdjacentBlock([i, j, k-1]) == -1 || this.getAdjacentBlock([i, j, k-1]) == 2) {
                             this.samplesPacked[sampleCounter] += pack5_16([-1, i,j,k, -3]);
                             sampleCounter++;
                         }
-                        if(this.getAdjacentBlock([i, j, k+1]) == -1) {
+                        if(this.getAdjacentBlock([i, j, k+1]) == -1 || this.getAdjacentBlock([i, j, k+1]) == 2) {
                             this.samplesPacked[sampleCounter] += pack5_16([-1, i,j,k, 3]);
                             sampleCounter++;
                         }
@@ -386,12 +389,14 @@ class Precomputer extends Prog {
 
 
         //set scene materials
-        gl.uniform1fv(this.u_("materials[0].albedoFactor"), new Float32Array([0.8]));
+        gl.uniform1f(this.u_("materials[0].albedoFactor"), new Float32Array(0.8));
         gl.uniform3fv(this.u_("materials[0].albedo"), new Float32Array([0.4, 0.8, 0.8]));
         gl.uniform1f(this.u_("materials[1].reflectivity"), 0.4);
-        gl.uniform1fv(this.u_("materials[1].albedoFactor"), new Float32Array([0.8]));
+        gl.uniform1f(this.u_("materials[1].albedoFactor"), new Float32Array(0.8));
         gl.uniform3fv(this.u_("materials[1].albedo"), new Float32Array([0.8, 0.2, 0.8]));
-        gl.uniform1f(this.u_("materials[1].reflectivity"), 0.4);
+
+        gl.uniform1f(this.u_("materials[2].isGlass"), 1.0);
+        gl.uniform3fv(this.u_("materials[2].albedo"), new Float32Array([1.0, 1.0, 1.0]));
 
         // INIT PRESENT SUBPROGRAM
         await this.presentProg.initProgram();

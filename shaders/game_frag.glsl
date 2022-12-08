@@ -30,7 +30,7 @@ struct Material {
     float isGlass;
     vec3 luminosity;
 };
-uniform Material[50] u_materials;
+uniform Material[3] u_materials;
 
 //      DATA SECTION END
 
@@ -89,38 +89,21 @@ void createCoordinateSystem(vec3 normal, out vec3 tangent, out vec3 bitangent) {
     bitangent = cross(normal, tangent);
 }
 
-// const int numSpheres = 4;
-// Sphere spheres[numSpheres] = Sphere[](
-//     //metal
-//     Sphere(vec3(-0.75, -1.45, -4.4), 1.05, 
-//     Material(
-//         vec3(0.8, 0.4, 0.8), 
-//         vec3(0.0), 1.0, 0.8, false)),
+const int numSpheres = 1;
+Sphere spheres[numSpheres] = Sphere[](
+    Sphere(vec3(5.0, 5.0, 5.0), 1.0, 
+    Material(
+        vec3(0.9), 
+        vec3(0.0), 0.0, 0.0, 1.0, vec3(0.0)))
+);
 
-//     //glass
-//     Sphere(vec3(2.0, -2.05, -3.7), 0.5, 
-//     Material(
-//         vec3(0.9, 1.0, 0.8), 
-//         vec3(0.0), 0.0, 0.8, true)),
-
-//     Sphere(vec3(-1.75, -1.95, -3.1), 0.6, 
-//     Material(
-//         vec3(1, 1, 1), 
-//         vec3(0.0), 0.0, 0.8, false)),
-
-//     //light
-//     Sphere(vec3(0, 17.8, -1), 15.0, 
-//         Material(
-//             vec3(0.0, 0.0, 0.0), 
-//             vec3(50000.0, 40000.0, 45000.0), 0.0, 0.8, false))
-// );
-
-const int numPointLights = 4;
+const int numPointLights = 5;
 PointLight pointLights[numPointLights] = PointLight[](
     PointLight(vec3(7, 4, -2), vec3(50000.0, 40000.0, 45000.0) * 0.3),
     PointLight(vec3(7, 15.4, -2), vec3(10000.0, 40000.0, 45000.0) * 0.3),
     PointLight(vec3(-2, 4.4, 9), vec3(40000.0, 10000.0, 45000.0) * 0.3),
-    PointLight(vec3(7, 6.4, 17), vec3(40000.0, 45000.0, 10000.0) * 0.3)
+    PointLight(vec3(7, 6.4, 17), vec3(40000.0, 45000.0, 10000.0) * 0.3),
+    PointLight(vec3(5, 9, 5), vec3(70000.0, 70000.0, 70000.0) * 0.3)
     
 );
 
@@ -160,7 +143,7 @@ Intersection intersectBlocks(Ray ray) {
 
     vec3 dirmask;
     if (tNear < tFar && tFar > eps) {
-        float t = tNear;
+        float t = tNear - 1.0;
         if(tNear < eps)
             t = 0.0;
         vec3 r_pos = ray.origin + ray.dir * t;
@@ -194,22 +177,49 @@ Intersection intersectBlocks(Ray ray) {
                 else
                     if(mint == t1.z) dirmask.z = 1.0;
             t += mint;
-            r_pos += ray.dir * mint;
+            r_pos = ray.origin + ray.dir * t;
 
-            ivec3 blockpos = ivec3(floor(r_pos + eps*ray.dir));
-            if(blockpos.x < 0 || blockpos.x >= u_sceneSize.x ||
-                blockpos.y < 0 || blockpos.y >= u_sceneSize.y ||
-                blockpos.z < 0 || blockpos.z >= u_sceneSize.z) {
-                break;
+            ivec3 blockpos = ivec3(floor(r_pos + eps * dirmask * stepdir));
+            ivec3 prevblockpos = ivec3(floor(r_pos - eps * dirmask * stepdir));
+            if(blockpos.x < 0 || blockpos.y < 0 || blockpos.z < 0 ||
+                blockpos.x > u_sceneSize.x - 1 || blockpos.y > u_sceneSize.y - 1 || blockpos.z > u_sceneSize.z - 1) {
+                count++;
+                continue;
             }
             int blockPosLin = blockpos.x + blockpos.y * u_sceneSize.x + blockpos.z * u_sceneSize.x * u_sceneSize.y;
             int block = texelFetch(u_blocksData, blockpos, 0).r;
-            
-            if (block != -1) {
-                res.distance = t;
-                res.position = r_pos;
+            int prevblock = texelFetch(u_blocksData, prevblockpos, 0).r;
+            bool prevIsSolid = false;
+            if(prevblockpos.x >= 0 && prevblockpos.y >= 0 && prevblockpos.z >= 0 &&
+                prevblockpos.x <= u_sceneSize.x - 1 && prevblockpos.y <= u_sceneSize.y - 1 && prevblockpos.z <= u_sceneSize.z - 1
+                && prevblock != -1) {
+                    prevIsSolid = true;
+            }
+            if (block != -1 || prevIsSolid) {
                 res.normal = -dirmask * stepdir;
                 res.material = u_materials[block];
+                if(block != -1) {
+                    if(prevIsSolid) {
+                        if(u_materials[prevblock].isGlass == 1.0 && u_materials[block].isGlass == 1.0) {
+                            //from glass to glass -> passthrough
+                            count++;
+                            continue;
+                        }
+                        if(u_materials[prevblock].isGlass != 1.0) {
+                            //from solid to solid/glass -> set solid
+                            res.material = u_materials[prevblock];
+                            res.normal = -res.normal;
+                        }
+                        //glass to solid -> keep solid
+                    }
+                }
+                else {
+                    //from solid to air
+                    res.material = u_materials[prevblock];
+                    res.normal = -res.normal;
+                }
+                res.distance = t;
+                res.position = r_pos;
 
                 //extract luminocity from texture
                 int side = 0;
@@ -260,17 +270,17 @@ Intersection intersect(Ray ray) {
     Intersection intersection;
     intersection.distance = -1.0;
 
-    // for (int i = 0; i < numSpheres; i++) {
-    //     Sphere sphere = spheres[i];
-    //     Intersection res = intersectSphere(ray, sphere);
-    //     if (res.distance > 0.0 && (intersection.distance < 0.0 || res.distance < intersection.distance)) {
-    //         intersection = res;
-    //     }
-    // }
+    for (int i = 0; i < numSpheres; i++) {
+        Sphere sphere = spheres[i];
+        Intersection res = intersectSphere(ray, sphere);
+        if (res.distance > eps && (intersection.distance < 0.0 || res.distance < intersection.distance)) {
+            intersection = res;
+        }
+    }
 
     // check collision with 3d grid
     Intersection res = intersectBlocks(ray);
-    if (res.distance > 0.0 && (intersection.distance < 0.0 || res.distance < intersection.distance)) {
+    if (res.distance > eps && (intersection.distance < 0.0 || res.distance < intersection.distance)) {
         intersection = res;
     }
 
@@ -299,7 +309,6 @@ vec3 addDirectLight(Intersection intersection) {
 const float finalLumScale = 0.0008;
 const int MAX_BOUNCES = 6;
 bool hitGlass = false;
-int hitGlassI = 0;
 int decision = 0;
 vec3 pathTrace(Ray ray) {
     int depth = 0;
@@ -307,6 +316,7 @@ vec3 pathTrace(Ray ray) {
     vec3 lightColor = vec3(0.0);
     vec3 resColor = vec3(0.0);
     vec3 throughput = vec3(1.0);
+    int hitGlassI = 0;
 
     while(depth < MAX_BOUNCES) {
         Intersection intersection = intersect(ray);
@@ -320,6 +330,9 @@ vec3 pathTrace(Ray ray) {
             lightColor = intersection.material.emission;
             break;
         } else {
+            // // test normals
+            // lightColor = intersection.normal * 500.0;
+            // break;
             if(intersection.material.isGlass == 1.0) {
                 float n = 1.5;
                 float R0 = (1.0 - n) / (1.0 + n);
@@ -335,18 +348,19 @@ vec3 pathTrace(Ray ray) {
                 cur_seed += random(vec3(16.231, 132.52, 25.3215), cur_seed);
                 throughput *= intersection.material.albedo;
                 if(cost2 > 0.0) {
-                    if(hitGlassI > 1)
+                    if(hitGlassI > 0)
                     {
                         ray.dir = normalize(n * ray.dir + (n * cost1 - sqrt(cost2)) * intersection.normal);
                     }
                     else
                         if(hitGlassI == 0 && decision % 2 == 0 || hitGlassI == 1 && decision / 2 == 0) {
-                            ray.dir = normalize(n * ray.dir + (n * cost1 - sqrt(cost2)) * intersection.normal);
-                            throughput *= (1.0 - R) * 2.0;
+                            ray.dir = normalize(reflect(ray.dir, intersection.normal));
+                            throughput *= R;
                         }
                         else {
-                            ray.dir = normalize(reflect(ray.dir, intersection.normal));
-                            throughput *= R * 2.0;
+                            //refraction
+                            ray.dir = normalize(n * ray.dir + (n * cost1 - sqrt(cost2)) * intersection.normal);
+                            throughput *= (1.0 - R);
                         }
                 }
                 else {
@@ -356,9 +370,6 @@ vec3 pathTrace(Ray ray) {
                 hitGlassI++;
             } 
             else {
-                // test normals
-                // lightColor = abs(intersection.normal) * 500.0;
-                // break;
                 float diffuseFactor = 1.0 - intersection.material.reflectivity;
                 float reflectFactor = intersection.material.reflectivity;
                 //diffuse
@@ -386,7 +397,6 @@ vec3 pathTrace(Ray ray) {
     }
     return resColor + lightColor * throughput;
 }
-const int SAMPLES = 1;
 const float aa_factor = 0.0;
 void main() {
     cur_seed = u_seed;
@@ -396,8 +406,6 @@ void main() {
         fovscale *= u_resolution.y / u_resolution.x;
     }
     //get vector from angles
-
-    vec2 pixpos = ((pos * 0.5)  + 0.5) * u_resolution;
     
     vec3 top = vec3(0.0, 1.0, 0.0);
     vec3 right = normalize(cross(u_cameraVec, top));
@@ -408,10 +416,9 @@ void main() {
     ray.dir = normalize(ray.dir);
     ray.origin = u_cameraPos;
     vec3 col = vec3(0.0);
-    int samples_n = SAMPLES;
+    int samples_n = 1;
     for(int i = 0; i < samples_n; i++) {
         decision = i;
-        hitGlassI = 0;
         if(aa_factor > 0.0) {
             ray.dir.x += (random(vec3(525.315, 126.26, 12.42), cur_seed + float(i)) - 0.5) / u_resolution.x * aa_factor;
             ray.dir.y += (random(vec3(125.231, 162.135, 115.321), cur_seed + float(i)) - 0.5) / u_resolution.y * aa_factor;
@@ -421,11 +428,10 @@ void main() {
         cur_seed += random(vec3(315.231, 13.5123, 125.3215), cur_seed + float(i));
         col += pathTrace(ray);
         if(hitGlass)
-            samples_n= 4;
+            samples_n= 2;
     }
     col /= float(samples_n);
     col *=  finalLumScale;
-    vec2 texCoord = pos * 0.5 + 0.5;
     //gamma correction
     col = pow(col, vec3(1.0 / 2.2));
     outColor = vec4(col, 1.0);

@@ -32,7 +32,7 @@ struct Material {
     float isGlass;
 };
 
-uniform Material[50] u_materials;
+uniform Material[20] u_materials;
 
 //      DATA SECTION END
 
@@ -96,7 +96,7 @@ vec3 cosineWeightedDirection(float seed, vec3 normal) {
     return d;
 }
 //Scene
-const int numSpheres = 4;
+const int numSpheres = 6;
 Sphere spheres[numSpheres] = Sphere[](
     // //metal
     // Sphere(vec3(-0.75, -1.45, -4.4), 1.05, 
@@ -131,7 +131,17 @@ Sphere spheres[numSpheres] = Sphere[](
     Sphere(vec3(7, 6.4, 17), 1.0, 
         Material(
             vec3(0.0, 0.0, 0.0), 
-            vec3(4000.0, 4500.0, 1000.0) * 3.0, 0.0, 0.8, 0.0))
+            vec3(4000.0, 4500.0, 1000.0) * 3.0, 0.0, 0.8, 0.0)),
+    Sphere(vec3(5, 9, 5), 1.0, 
+        Material(
+            vec3(0.0, 0.0, 0.0), 
+            vec3(7000.0, 7000.0, 7000.0) * 3.0, 0.0, 0.8, 0.0)),
+
+
+    Sphere(vec3(5.0, 5.0, 5.0), 1.0, 
+    Material(
+        vec3(0.9), 
+        vec3(0.0), 0.0, 0.0, 1.0))
 );
 
 Intersection intersectSphere(Ray ray, Sphere sphere) {
@@ -170,7 +180,7 @@ Intersection intersectBlocks(Ray ray) {
 
     vec3 dirmask;
     if (tNear < tFar && tFar > eps) {
-        float t = tNear;
+        float t = tNear - 1.0;
         if(tNear < eps)
             t = 0.0;
         vec3 r_pos = ray.origin + ray.dir * t;
@@ -204,26 +214,49 @@ Intersection intersectBlocks(Ray ray) {
                 else
                     if(mint == t1.z) dirmask.z = 1.0;
             t += mint;
-            r_pos += ray.dir * mint;
+            r_pos = ray.origin + ray.dir * t;
 
-            ivec3 blockpos = ivec3(floor(r_pos + eps*ray.dir));
-            if(blockpos.x < 0 || blockpos.x >= u_sceneSize.x ||
-                blockpos.y < 0 || blockpos.y >= u_sceneSize.y ||
-                blockpos.z < 0 || blockpos.z >= u_sceneSize.z) {
-                break;
+            ivec3 blockpos = ivec3(floor(r_pos + eps * dirmask * stepdir));
+            ivec3 prevblockpos = ivec3(floor(r_pos - eps * dirmask * stepdir));
+            if(blockpos.x < 0 || blockpos.y < 0 || blockpos.z < 0 ||
+                blockpos.x > u_sceneSize.x - 1 || blockpos.y > u_sceneSize.y - 1 || blockpos.z > u_sceneSize.z - 1) {
+                count++;
+                continue;
             }
-            int block = texelFetch(u_blocksData, blockpos, 0).r; 
-
-            if (block != -1) {
-                res.distance = t;
-                res.position = r_pos;
+            int block = texelFetch(u_blocksData, blockpos, 0).r;
+            int prevblock = texelFetch(u_blocksData, prevblockpos, 0).r;
+            bool prevIsSolid = false;
+            if(prevblockpos.x >= 0 && prevblockpos.y >= 0 && prevblockpos.z >= 0 &&
+                prevblockpos.x <= u_sceneSize.x - 1 && prevblockpos.y <= u_sceneSize.y - 1 && prevblockpos.z <= u_sceneSize.z - 1
+                && prevblock != -1) {
+                    prevIsSolid = true;
+            }
+            if (block != -1 || prevIsSolid) {
                 res.normal = -dirmask * stepdir;
                 res.material = u_materials[block];
+                if(block != -1) {
+                    if(prevIsSolid && u_materials[prevblock].isGlass == 1.0 && u_materials[block].isGlass == 1.0) {
+                        //from glass to glass
+                        count++;
+                        continue;
+                    }
+                    // if(u_materials[prevblock].isGlass != 1.0) {
+                    //     //from solid to solid/glass -> set solid
+                    //     res.material = u_materials[prevblock];
+                    //     res.normal = -res.normal;
+                    // }
+                }
+                else {
+                    //from solid to air
+                    res.material = u_materials[prevblock];
+                    res.normal = -res.normal;
+                }
+                res.distance = t;
+                res.position = r_pos;
                 break;
             }
             count++;
         }
-        // return Intersection(ray.origin, vec3(0.0, t+1.0, 0.0), 1.0, u_materials[0]);
     }
     return res;
 }
@@ -235,14 +268,14 @@ Intersection intersect(Ray ray) {
     for (int i = 0; i < numSpheres; i++) {
         Sphere sphere = spheres[i];
         Intersection res = intersectSphere(ray, sphere);
-        if (res.distance > 0.0 && (intersection.distance < 0.0 || res.distance < intersection.distance)) {
+        if (res.distance > eps && (intersection.distance < 0.0 || res.distance < intersection.distance)) {
             intersection = res;
         }
     }
 
     // check collision with 3d grid
     Intersection res = intersectBlocks(ray);
-    if (res.distance > 0.0 && (intersection.distance < 0.0 || res.distance < intersection.distance)) {
+    if (res.distance > eps && (intersection.distance < 0.0 || res.distance < intersection.distance)) {
         intersection = res;
     }
 
@@ -349,6 +382,7 @@ void main() {
     sample_block_pos.x = (int(texelFetch(u_packedDataTex, ivec2(sample_loc, 0), 0).r) >> 4) % pack_factor;
     sample_block_pos.y = (int(texelFetch(u_packedDataTex, ivec2(sample_loc, 0), 0).r) >> 8) % pack_factor;
     sample_block_pos.z = (int(texelFetch(u_packedDataTex, ivec2(sample_loc, 0), 0).r) >> 12) % pack_factor;
+    ivec3 next_block_pos = sample_block_pos;
 
     int side = (int(texelFetch(u_packedDataTex, ivec2(sample_loc, 0), 0).r) / (256*256)) - 3;
 
@@ -396,6 +430,9 @@ void main() {
         ray.origin.x += texPix.x;
         ray.origin.y += texPix.y;
     }
+    next_block_pos += ivec3(ray.dir);
+    int blockMaterial = texelFetch(u_blocksData, next_block_pos, 0).r;
+
     // outColor = vec4(vec3(float(side) + 3.0) / 7.0, 1.0); //visualize side
     // return;
 
@@ -411,7 +448,24 @@ void main() {
     vec3 col = vec3(0.0);
     int samples_n = SAMPLES;
     for(int i = 0; i < samples_n; i++) {
+        float scale = 1.0;
         ray.dir = cosineWeightedDirection(cur_seed + texCoord.x * 0.3 + texCoord.y * 3.3, norm);
+        if(u_materials[blockMaterial].isGlass == 1.0) {
+            //apply refraction 1.5
+            float n = 1.5;
+            float R0 = (1.0 - n) / (1.0 + n);
+            R0 = R0 * R0;
+            n = 1.0 / n;
+            float cost1 = dot(ray.dir, norm);
+            float cost2 = 1.0 - n * n * (1.0 - cost1 * cost1);
+            float R = R0 + (1.0 - R0) * pow(1.0 - cost1, 5.0); // Schlick's approximation
+            if (cost2 > 0.0) {
+                scale = 1.0 - R;
+                ray.dir = normalize(n * ray.dir + (n * cost1 - sqrt(cost2)) * -norm);
+            } else {
+                scale = 0.0;
+            }
+        }
         float cost = dot(ray.dir, norm);
         if(aa_factor > 0.0) {
             ray.dir.x += (random(vec3(525.315, 126.26, 12.42), cur_seed + float(i)) - 0.5) / u_resolution.x * aa_factor;
@@ -420,7 +474,7 @@ void main() {
             ray.dir = normalize(ray.dir);
         }
         cur_seed += random(vec3(315.231, 13.5123, 125.3215), cur_seed + float(i));
-        col += pathTrace(ray) * cost;
+        col += pathTrace(ray) * cost * scale;
     }
     col /= float(samples_n);
     col *=  finalLumScale;

@@ -156,6 +156,7 @@ Intersection intersectSphere(Ray ray, Sphere sphere) {
     return res;
 }
 
+bool wrongTrigger = false;
 Intersection intersectBlocks(Ray ray) {
     Intersection res;
 
@@ -180,6 +181,11 @@ Intersection intersectBlocks(Ray ray) {
         while(t < tFar - eps) {
             dirmask = vec3(0.0, 0.0, 0.0);
 
+            if(count > 50) {
+                wrongTrigger = true;
+                break;
+            }
+
             vec3 t1 = vec3(0.0);
             if(stepdir.x >= 0.0) {
                 t1.x = (ceil(r_pos.x + eps) - r_pos.x) * rayDirInv.x;
@@ -195,6 +201,15 @@ Intersection intersectBlocks(Ray ray) {
                 t1.z = (ceil(r_pos.z + eps) - r_pos.z) * rayDirInv.z;
             } else {
                 t1.z = (floor(r_pos.z - eps) - r_pos.z) * rayDirInv.z;
+            }
+            if(stepdir.x == 0.0) {
+                t1.x = 100000.0;
+            }
+            if(stepdir.y == 0.0) {
+                t1.y = 100000.0;
+            }
+            if(stepdir.z == 0.0) {
+                t1.z = 100000.0;
             }
 
             float mint = min(t1.x, min(t1.y, t1.z));
@@ -530,5 +545,8 @@ void main() {
     col *=  finalLumScale;
     //gamma correction
     col = pow(col, vec3(1.0 / 2.2));
-    outColor = vec4(col, 1.0);
+    if(wrongTrigger)
+        outColor = vec4(255.0, 0.0, 0.0, 1.0);
+    else
+        outColor = vec4(col, 1.0);
 }

@@ -29,19 +29,10 @@ struct Material {
     vec3 emission;
     float reflectivity;
     float albedoFactor;
-    float isGlass;
+    bool isGlass;
 };
 
 uniform Material[20] u_materials;
-
-//      DATA SECTION END
-
-const float PI = 3.1415926535897932384626433832795;
-const float eps = 1e-5;
-
-float cur_seed;
-
-out vec4 outColor;
 
 
 struct SolidLight {
@@ -56,11 +47,21 @@ struct Sphere {
     Material material;
 };
 
-struct Cube {
-    vec3 min;
-    vec3 max;
-    Material material;
-};
+uniform int u_numSpheres;
+uniform Sphere u_spheres[10];
+
+uniform int u_numStaticLights;
+uniform SolidLight u_staticLights[10];
+
+//      DATA SECTION END
+
+const float PI = 3.1415926535897932384626433832795;
+const float eps = 1e-5;
+
+float cur_seed;
+
+out vec4 outColor;
+
 
 struct Intersection {
     vec3 position;
@@ -101,33 +102,6 @@ vec3 cosineWeightedDirection(float seed, vec3 normal) {
     vec3 d = normalize(u * cos(r1) * r2s + v * sin(r1) * r2s + w * sqrt(1.0 - r2));
     return d;
 }
-//Scene
-const int numSpheres = 2;
-Sphere spheres[numSpheres] = Sphere[](
-    Sphere(vec3(5.0, 5.0, 5.0), 1.0, 
-    Material(
-        vec3(0.9), 
-        vec3(0.0), 0.0, 0.0, 1.0)),
-    
-    Sphere(vec3(7.3, 2.5, 3.5), 0.49, 
-    Material(
-        vec3(1.0, 0.6, 0.8), 
-        vec3(1.0), 0.0, 0.6, 0.0))
-);
-
-
-const int numStaticLights = 6;
-SolidLight staticLights[numStaticLights] = SolidLight[](
-    SolidLight(vec3(7, 4, -2), vec3(13000.0, 13000.0, 13000.0) * 0.3, 1.0),
-    SolidLight(vec3(7, 15.4, -2), vec3(3000.0, 13000.0, 13000.0) * 0.3, 1.0),
-    SolidLight(vec3(-2, 4.4, 9), vec3(13000.0, 3000.0, 13000.0) * 0.3, 1.0),
-    SolidLight(vec3(7, 6.4, 17), vec3(13000.0, 13000.0, 3000.0) * 0.3, 1.0),
-    SolidLight(vec3(5, 9, 5), vec3(23000.0, 23000.0, 23000.0), 1.0),
-
-
-    SolidLight(vec3(8.5, 2.8, 5.5), vec3(150000.0, 10000.0, 50000.0), 0.3)
-    
-);
 
 Intersection intersectSphere(Ray ray, Sphere sphere) {
     Intersection res;
@@ -235,7 +209,7 @@ Intersection intersectBlocks(Ray ray) {
                 res.normal = -dirmask * stepdir;
                 res.material = u_materials[block];
                 if(block != -1) {
-                    if(prevIsSolid && u_materials[prevblock].isGlass == 1.0 && u_materials[block].isGlass == 1.0) {
+                    if(prevIsSolid && u_materials[prevblock].isGlass && u_materials[block].isGlass) {
                         //from glass to glass
                         count++;
                         continue;
@@ -265,8 +239,8 @@ Intersection intersect(Ray ray) {
     Intersection intersection;
     intersection.distance = -1.0;
 
-    for (int i = 0; i < numSpheres; i++) {
-        Sphere sphere = spheres[i];
+    for (int i = 0; i < u_numSpheres; i++) {
+        Sphere sphere = u_spheres[i];
         Intersection res = intersectSphere(ray, sphere);
         if (res.distance > eps && (intersection.distance < 0.0 || res.distance < intersection.distance)) {
             intersection = res;
@@ -274,9 +248,9 @@ Intersection intersect(Ray ray) {
     }
 
 
-    for (int i = 0; i < numStaticLights; i++) {
-        SolidLight solidLight = staticLights[i];
-        Sphere sphere = Sphere(solidLight.position, solidLight.radius, Material(vec3(0.0), vec3(solidLight.power), 0.0, 0.0, 0.0));
+    for (int i = 0; i < u_numStaticLights; i++) {
+        SolidLight solidLight = u_staticLights[i];
+        Sphere sphere = Sphere(solidLight.position, solidLight.radius, Material(vec3(0.0), vec3(solidLight.power), 0.0, 0.0, false));
         Intersection res = intersectSphere(ray, sphere);
         if (res.distance > eps && (intersection.distance < 0.0 || res.distance < intersection.distance)) {
             intersection = res;
@@ -315,7 +289,7 @@ vec3 pathTrace(Ray ray) {
                 lightColor = intersection.material.emission;
             break;
         } else {
-            if(intersection.material.isGlass == 1.0) {
+            if(intersection.material.isGlass) {
                 float n = 1.5;
                 float R0 = (1.0 - n) / (1.0 + n);
                 R0 = R0 * R0;
@@ -460,7 +434,7 @@ void main() {
     for(int i = 0; i < samples_n; i++) {
         float scale = 1.0;
         ray.dir = cosineWeightedDirection(cur_seed + texCoord.x * 0.3 + texCoord.y * 3.3, norm);
-        if(u_materials[blockMaterial].isGlass == 1.0) {
+        if(u_materials[blockMaterial].isGlass) {
             //apply refraction 1.5
             float n = 1.5;
             float R0 = (1.0 - n) / (1.0 + n);

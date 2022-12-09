@@ -27,21 +27,9 @@ struct Material {
     vec3 emission;
     float reflectivity;
     float albedoFactor;
-    float isGlass;
+    bool isGlass;
 };
 uniform Material[20] u_materials;
-
-//      DATA SECTION END
-
-
-
-const float PI = 3.1415926535897932384626433832795;
-const float eps = 3e-5;
-
-float cur_seed;
-
-out vec4 outColor;
-
 
 struct Sphere {
     vec3 center;
@@ -64,6 +52,33 @@ struct SolidLight {
     float radius;
 };
 
+//static scene: spheres, solidLights
+uniform int u_numSpheres;
+uniform Sphere u_spheres[10];
+
+uniform int u_numStaticLights;
+uniform SolidLight u_staticLights[10];
+
+// only RTR objects:
+uniform int u_numDynamicCubes;
+uniform Cube u_dynamicCubes[20];
+
+uniform int u_numDynamicSpheres;
+uniform Sphere u_dynamicSpheres[10];
+
+uniform int u_numFakePointLights;
+uniform PointLight u_fakePointLights[10];
+//      DATA SECTION END
+
+
+
+const float PI = 3.1415926535897932384626433832795;
+const float eps = 3e-5;
+
+float cur_seed;
+
+out vec4 outColor;
+
 struct Intersection {
     vec3 position;
     vec3 normal;
@@ -83,56 +98,7 @@ float random(vec3 scale, float seed) {
     return fract(sin(dot(gl_FragCoord.xyz + seed, scale)) * 43758.5453 + seed);
 }
 
-//static scene: spheres, solidLights
-const int numSpheres = 2;
-Sphere spheres[numSpheres] = Sphere[](
-    Sphere(vec3(5.0, 5.0, 5.0), 1.0, 
-    Material(
-        vec3(0.9), 
-        vec3(0.0), 0.0, 0.0, 1.0)),
-    
-    Sphere(vec3(7.3, 2.5, 3.5), 0.49, 
-    Material(
-        vec3(1.0, 0.6, 0.8), 
-        vec3(1.0), 0.0, 0.6, 0.0))
-);
 
-const int numStaticLights = 6;
-SolidLight staticLights[numStaticLights] = SolidLight[](
-    SolidLight(vec3(7, 4, -2), vec3(13000.0, 13000.0, 13000.0) * 0.3, 1.0),
-    SolidLight(vec3(7, 15.4, -2), vec3(3000.0, 13000.0, 13000.0) * 0.3, 1.0),
-    SolidLight(vec3(-2, 4.4, 9), vec3(13000.0, 3000.0, 13000.0) * 0.3, 1.0),
-    SolidLight(vec3(7, 6.4, 17), vec3(13000.0, 13000.0, 3000.0) * 0.3, 1.0),
-    SolidLight(vec3(5, 9, 5), vec3(23000.0, 23000.0, 23000.0), 1.0),
-
-
-    SolidLight(vec3(8.5, 2.8, 5.5), vec3(150000.0, 10000.0, 50000.0), 0.3)
-    
-);
-
-
-
-
-
-// only RTR objects:
-const int numDynamicSpheres = 2;
-Sphere dynamicSpheres[numDynamicSpheres] = Sphere[](
-    Sphere(vec3(5.5, 2.5, 1.5), 0.5, 
-    Material(
-        vec3(1.0), 
-        vec3(1.0), 0.0, 0.9, 1.0)),
-    Sphere(vec3(7.5, 2.5, 1.5), 0.5, 
-    Material(
-        vec3(1.0, 0.6, 0.3), 
-        vec3(1.0), 0.8, 0.6, 0.0))
-);
-
-
-const int numFakePointLights = 1;
-PointLight fakePointLights[numFakePointLights] = PointLight[](
-    PointLight(vec3(13, 9, -3))
-    
-);
 
 Intersection intersectSphere(Ray ray, Sphere sphere) {
     Intersection res;
@@ -151,6 +117,45 @@ Intersection intersectSphere(Ray ray, Sphere sphere) {
         res.position = ray.origin + ray.dir * t;
         res.normal = normalize(res.position - sphere.center);
         res.material = sphere.material;
+    }
+
+    return res;
+}
+
+Intersection intersectCube(Ray ray, Cube cube) {
+    Intersection res;
+    res.distance = -1.0;
+
+    vec3 rayDirInv = 1.0 / ray.dir;
+    vec3 tMin = (cube.min - ray.origin) * rayDirInv;
+    vec3 tMax = (cube.max - ray.origin) * rayDirInv;
+    vec3 t1 = min(tMin, tMax);
+    vec3 t2 = max(tMin, tMax);
+    float tNear = max(max(t1.x, t1.y), t1.z);
+    float tFar = min(min(t2.x, t2.y), t2.z);
+
+    vec3 stepsign = sign(ray.dir);
+    vec3 dirmask;
+    if(tNear == t1.x) dirmask.x = 1.0;
+    else
+        if(tNear == t1.y) dirmask.y = 1.0;
+        else
+            if(tNear == t1.z) dirmask.z = 1.0;
+
+    if (tNear < tFar && tFar > eps) {
+        float t = tNear;
+        if(tNear < eps) {
+            t = tFar;
+            if(tFar == t2.x) dirmask.x = 1.0;
+            else
+                if(tFar == t2.y) dirmask.y = 1.0;
+                else
+                    if(tFar == t2.z) dirmask.z = 1.0;
+        }
+        res.distance = t;
+        res.position = ray.origin + ray.dir * t;
+        res.normal = -stepsign * dirmask;
+        res.material = cube.material;
     }
 
     return res;
@@ -242,12 +247,12 @@ Intersection intersectBlocks(Ray ray) {
                 res.material = u_materials[block];
                 if(block != -1) {
                     if(prevIsSolid) {
-                        if(u_materials[prevblock].isGlass == 1.0 && u_materials[block].isGlass == 1.0) {
+                        if(u_materials[prevblock].isGlass && u_materials[block].isGlass) {
                             //from glass to glass -> passthrough
                             count++;
                             continue;
                         }
-                        if(u_materials[prevblock].isGlass != 1.0) {
+                        if(!u_materials[prevblock].isGlass) {
                             //from solid to solid/glass -> set solid
                             res.material = u_materials[prevblock];
                             res.normal = -res.normal;
@@ -312,17 +317,19 @@ Intersection intersect(Ray ray) {
     Intersection intersection;
     intersection.distance = -1.0;
 
-    for (int i = 0; i < numSpheres; i++) {
-        Sphere sphere = spheres[i];
+    //intersect spheres
+    for (int i = 0; i < u_numSpheres; i++) {
+        Sphere sphere = u_spheres[i];
         Intersection res = intersectSphere(ray, sphere);
         if (res.distance > eps && (intersection.distance < 0.0 || res.distance < intersection.distance)) {
             intersection = res;
             intersection.objectUID = i;
         }
     }
-    for (int i = 0; i < numStaticLights; i++) {
-        SolidLight solidLight = staticLights[i];
-        Sphere sphere = Sphere(solidLight.position, solidLight.radius, Material(vec3(0.0), vec3(solidLight.power), 0.0, 0.0, 0.0));
+    //intersect spheric lights
+    for (int i = 0; i < u_numStaticLights; i++) {
+        SolidLight solidLight = u_staticLights[i];
+        Sphere sphere = Sphere(solidLight.position, solidLight.radius, Material(vec3(0.0), vec3(solidLight.power), 0.0, 0.0, false));
         sphere.material.emission *= 0.2; //to be different from pure white
         Intersection res = intersectSphere(ray, sphere);
         if (res.distance > eps && (intersection.distance < 0.0 || res.distance < intersection.distance)) {
@@ -340,13 +347,24 @@ Intersection intersect(Ray ray) {
     }
 
     //test dynamic objects
-    for (int i = 0; i < numDynamicSpheres; i++) {
-        Sphere sphere = dynamicSpheres[i];
+    //dynamic spheres
+    for (int i = 0; i < u_numDynamicSpheres; i++) {
+        Sphere sphere = u_dynamicSpheres[i];
         Intersection res = intersectSphere(ray, sphere);
         if (res.distance > eps && (intersection.distance < 0.0 || res.distance < intersection.distance)) {
             intersection = res;
             intersection.luminosity = vec3(-1.0);
             intersection.objectUID = 100 * i;
+        }
+    }
+    //dynamicCubes
+    for (int i = 0; i < u_numDynamicCubes; i++) {
+        Cube cube = u_dynamicCubes[i];
+        Intersection res = intersectCube(ray, cube);
+        if (res.distance > eps && (intersection.distance < 0.0 || res.distance < intersection.distance)) {
+            intersection = res;
+            intersection.luminosity = vec3(-1.0);
+            intersection.objectUID = 10000 * i;
         }
     }
 
@@ -356,8 +374,8 @@ Intersection intersect(Ray ray) {
 float isInDynamicShadow(Intersection intersection) {
     int shadowCNT = 0;
     int originalUID = intersection.objectUID;
-    for (int i = 0; i < numFakePointLights; i++) {
-        PointLight fakePointLight = fakePointLights[i];
+    for (int i = 0; i < u_numFakePointLights; i++) {
+        PointLight fakePointLight = u_fakePointLights[i];
         vec3 lightDir = normalize(fakePointLight.position - intersection.position);
         float lightDistance = length(fakePointLight.position - intersection.position);
 
@@ -382,12 +400,12 @@ float isInDynamicShadow(Intersection intersection) {
         if(!foundStaticObject && foundDynamicObject)
             shadowCNT++;
     }
-    return float(shadowCNT) / float(numFakePointLights);
+    return float(shadowCNT) / float(u_numFakePointLights);
 }
 vec3 addDirectLight(Intersection intersection) {
     vec3 color = vec3(0.0);
-    for (int i = 0; i < numStaticLights; i++) {
-        SolidLight pointLight = staticLights[i];
+    for (int i = 0; i < u_numStaticLights; i++) {
+        SolidLight pointLight = u_staticLights[i];
         vec3 lightDir = normalize(pointLight.position - intersection.position);
         float lightDistance = length(pointLight.position - intersection.position);
         float lightIntensity = 1.0 / (lightDistance * lightDistance);
@@ -398,7 +416,7 @@ vec3 addDirectLight(Intersection intersection) {
 
         bool objFound = false;
         while (totalDistance >= eps && totalDistance <= lightDistance && shadowIntersection.distance != -1.0) {
-            if(shadowIntersection.material.isGlass != 1.0 && shadowIntersection.objectUID != -10000*(i+1)) {
+            if(!shadowIntersection.material.isGlass && shadowIntersection.objectUID != -10000*(i+1)) {
                 objFound = true;
                 break;
             }
@@ -441,7 +459,7 @@ vec3 pathTrace(Ray ray) {
 
         //update light color and throughput
         lightColor += intersection.material.emission;
-        if(intersection.material.isGlass == 1.0) {
+        if(intersection.material.isGlass) {
             float n = 1.5;
             float R0 = (1.0 - n) / (1.0 + n);
             R0 = R0 * R0;

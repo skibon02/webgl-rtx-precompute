@@ -17,7 +17,7 @@ uniform int u_sampleCount;
 uniform isampler2D u_packedDataTex;
 
 const int PixelsPerSample = 80;
-const int SampleLength = 40;
+const int SampleLength = 48;
 
 //scene data
 uniform ivec3 u_sceneSize;  //x,y,z dimensions

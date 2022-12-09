@@ -13,7 +13,7 @@ uniform vec3 u_cameraVec;
 
 //blocks precompute data
 const float PixelsPerSample = 80.0;
-const int SampleLength = 40;
+const int SampleLength = 48;
 uniform sampler2D u_precompTex;
 uniform isampler2D u_precompMappingData;
 uniform int u_precompUsed;

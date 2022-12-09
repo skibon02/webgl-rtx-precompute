@@ -152,25 +152,94 @@ let defaultMap = {
     //     }
     // ]
     fakeLights: [
-        [13, 9, -3]
+        [6, 6, 4]
     ],
     
     materials: [
         new Material(0.8, [0.4, 0.8, 0.8]),
-        new Material(0.8, [0.8, 0.2, 0.8], 0.0),
+        new Material(0.8, [0.8, 0.2, 0.8], 0.4),
         new GlassMaterial(0.9),
         new Material(0.8, [0.8, 0.8, 0.8]),
     ],
     staticLights: [
         {
-            position: [5, 9, 5],
-            power: [23000.0, 23000.0, 23000.0],
+            position: [6, 8, 4],
+            power: [10000.0, 32000.0, 40000.0],
             radius: 1.0
+        },
+        {
+            position: [9, 12, 12],
+            power: [40000.0, 12000.0, 10000.0],
+            radius: 1.0
+        },
+        {
+            position: [9.5, 7.5, 5],
+            power: [300000.0, 12000.0, 150000.0],
+            radius: 0.3
         }
     ],
-    dynamicCubes: [],
-    dynamicSpheres: [],
-    spheres: []
+    dynamicSpheres: [
+        {
+            position: [2, 4, 12],
+            radius: 0.4,
+            material: new Material(0.6, [1.0, 0.6, 0.8], 0.0, [1.0, 1.0, 1.0]),
+            t: 0.0,
+            
+            activationRadius: 8.0,
+            hp: 4,
+            mob: 0,
+            type: 0, //0 - mob, 1 - projectile
+        },
+        {
+            position: [12, 4, 12],
+            radius: 0.4,
+            material: new Material(0.6, [0.2, 0.6, 0.8], 0.0, [1.0, 1.0, 1.0]),
+            t: 0.0,
+            activationRadius: 5.0,
+            hp: 10,
+            mob: 1, //0 - shootinng mob, 1 - moving mob
+            type: 0, //0 - mob, 1 - projectile
+            speed: 3,
+        }
+    ],
+    spheres: [
+        {
+            position: [9.5, 5.5, 5],
+            radius: 0.8,
+            material: new GlassMaterial(0.9)
+        },
+    ],
+    dynamicCubes: [
+        {
+            pos1: [12.31, 1.31, 12.31],
+            pos2: [12.69, 1.69, 12.69],
+            material: new Material(0.9, [1.0, 1.0, 1.0], 0.0, [1.0, 1.0, 1.0]),
+            set: false,
+            t: 0.0
+        },
+        {
+            pos1: [6, 1, 6],
+            pos2: [5, 2, 7],
+            material: new Material(0.9, [1.0, 1.0, 1.0], 0.0, [1.0, 1.0, 1.0]),
+            set: false,
+            t: 0.0
+        },
+        {
+            pos1: [1, 1, 4],
+            pos2: [2, 2, 5],
+            material: new Material(0.9, [1.0, 1.0, 1.0], 0.0, [1.0, 1.0, 1.0]),
+            set: false,
+            t: 0.0
+        },
+        {
+            pos1: [9, 1, 10],
+            pos2: [8, 2, 11],
+            material: new Material(0.9, [1.0, 1.0, 1.0], 0.0, [1.0, 1.0, 1.0]),
+            set: false,
+            t: 0.0
+        }
+    ],
+    name: "map1"
 }
 defaultMap.blocks = new Array(defaultMap.blocks_dims[0] * defaultMap.blocks_dims[1] * defaultMap.blocks_dims[2])
 defaultMap.blocks.fill(-1);
@@ -183,20 +252,13 @@ class Map {
         this.seed = cyrb128(this.prefix + "map1");
         let rand = sfc32(this.seed[0], this.seed[1], this.seed[2], this.seed[3]);
 
-        // randomly gen map
-        for(let i = 0; i < this.blocks_dims[0]; i++) {
-            for(let j = 0; j < this.blocks_dims[1]; j++) {
-                for(let k = 0; k < this.blocks_dims[2]; k++) {
-                    if(rand() < 0.8 && j == 1) {
-                        this.blocks[vec3ToLin([i,j,k], this.blocks_dims)] = 0;
+        //set map borders to material 0:
+        for(let x = 0; x < this.blocks_dims[0]; x++) {
+            for(let y = 0; y < this.blocks_dims[1]; y++) {
+                for(let z = 0; z < this.blocks_dims[2]; z++) {
+                    if(x == 0 || x == this.blocks_dims[0] - 1 || y == 0 || y == this.blocks_dims[1] - 1 || z == 0 || z == this.blocks_dims[2] - 1) {
+                        this.blocks[vec3ToLin([x,y,z], this.blocks_dims)] = 0;
                     }
-                    if(rand() < 0.15 && j == 2) {
-                        this.blocks[vec3ToLin([i,j,k], this.blocks_dims)] = 2;
-                    }
-                    if(rand() < 0.1 && j == 5) {
-                        this.blocks[vec3ToLin([i,j,k], this.blocks_dims)] = 3;
-                    }
-                    
                 }
             }
         }
@@ -381,7 +443,7 @@ class RTR extends Prog {
     }
 
     genMapping() {
-        this.samplesLength = 40;
+        this.samplesLength = 64;
         let sampleCounter = 0;
         loop1:
         for(let k = 0; k < map.blocks_dims[0]; k++) {
@@ -421,6 +483,7 @@ class RTR extends Prog {
                 }
             }
         }
+        console.log(sampleCounter);
         gl.activeTexture(gl.TEXTURE3);
         gl.bindTexture(gl.TEXTURE_2D, this.precompMappingData);
         gl.texImage2D(gl.TEXTURE_2D, 0, gl.R32I, 4096, 6, 0, gl.RED_INTEGER, gl.INT, new Int32Array(this.precompMapping));
@@ -486,8 +549,8 @@ class Precomputer extends Prog {
     constructor() {
         super("precomputer");
         this.clearEnabled = false;
-        this.samplesLength = 40;
-        this.samplesPacked = new Array(4020);
+        this.samplesLength = 64;
+        this.samplesPacked = new Array(8000);
         this.presentProg = new Prog("present");
         this.frames = 0;
     }
@@ -532,6 +595,7 @@ class Precomputer extends Prog {
                 }
             }
         }
+        console.log(sampleCounter);
         gl.activeTexture(gl.TEXTURE1);
         gl.bindTexture(gl.TEXTURE_2D, this.dataTexture);
         gl.texImage2D(gl.TEXTURE_2D, 0, gl.R32I, this.samplesPacked.length, 1, 0, gl.RED_INTEGER, gl.INT, new Int32Array(this.samplesPacked));
@@ -636,16 +700,21 @@ class App {
         this.programs = [];
         this.currentProgram = 0;
 
-        this.cameraPos = [5.5, 2.5, -2.5];
+        this.cameraPos = [5.5, 1.5, 2.5];
         this.cameraVec = [1, 0, 0];
         //angle of camera
         this.camera = [0, 0];
         this.move = [0, 0, 0];
         
-        this.moveSpeed = 2;
-        this.rotateSenstivity = 0.001;
+
         this.editMode = false;
         this.editorLength = 2;
+        this.editorMaterial = 0;
+        this.cubesLit = 0;
+
+        this.hp = 5;
+        this.moveSpeed = 3;
+        this.rotateSenstivity = 0.001;
 
         this.initGraphics();
     }
@@ -659,6 +728,7 @@ class App {
         this.clickHandler = this.click.bind(this);
         this.filedropHandler = this.filedrop.bind(this);
         this.dragoverHandler = this.dragover.bind(this);
+        this.scrollHandler = this.scroll.bind(this);
 
         canvas.addEventListener("drop", this.filedropHandler);
         canvas.addEventListener("dragover", this.dragoverHandler);
@@ -667,6 +737,8 @@ class App {
         document.addEventListener('pointerlockchange', this.pointerlockchangeHandler, false);
         document.addEventListener('pointerlockerror', lockError, false);
         canvas.addEventListener('click', this.clickHandler, false);
+        canvas.addEventListener('wheel', this.scrollHandler, false);
+
 
         //ENABLE WEBGL
         gl = canvas.getContext("webgl2");
@@ -722,6 +794,12 @@ class App {
         this.resizeCanvasToDisplaySize([{target: gl.canvas}]);
         //start rendering cycle
         window.requestAnimationFrame(this.draw.bind(this));
+    }
+    scroll(e) {
+        if(this.editMode) {
+            this.editorLength += -e.deltaY * 0.004;
+            this.editorLength = Math.max(0.1, this.editorLength);
+        }
     }
     dragover(e) {
         e.preventDefault();
@@ -856,6 +934,14 @@ class App {
             }
             this.editMode = !this.editMode;
         }
+        if(e.key == "=") {
+            this.editorMaterial++;
+            this.editorMaterial = Math.min(this.editorMaterial, map.materials.length - 1);
+        }
+        if(e.key == "-") {
+            this.editorMaterial--;
+            this.editorMaterial = Math.max(this.editorMaterial, 0);
+        }
     }
 
     pointerlockchange(e) {
@@ -868,17 +954,35 @@ class App {
             console.log('released');
         }
     }
-    click() {
+    click(e) {
         if(document.pointerLockElement != gl.canvas)
             gl.canvas.requestPointerLock();
         else {
             if(this.editMode) {
+                let rb = e.which == 3;
                 let pos = this.getEditorPos();
                 pos[0] = Math.floor(pos[0]);
                 pos[1] = Math.floor(pos[1]);
                 pos[2] = Math.floor(pos[2]);
-                let block = 0;
+                let block = this.editorMaterial;
+                if(rb)
+                    block = -1;
                 map.setBlock(pos[0], pos[1], pos[2], block);
+            }
+            else {
+                //shoot
+                let dir = this.cameraVec;
+                map.dynamicSpheres.push({
+                    position: this.cameraPos,
+                    radius: 0.05,
+                    material: new Material(0.0, [0.0, 0.0, 0.0], 0.0, [0, 1000, 1000]),
+                    type: 1,
+                    direction: scale(dir, 1.0),
+                    speed: 12,
+                    t: 0,
+                    livetime: 1000,
+                    side: 1
+                });
             }
         }
     }
@@ -924,9 +1028,14 @@ class App {
     getEditorPos() {
         return add(this.cameraPos, scale(this.cameraVec, this.editorLength));
     }
+    resetLevel(res) {
+        alert(res ? 'You win!' : 'You lose!');
+        this.stopped = true;
+    }
     draw(timestamp) {  
         
         if(this.stopped) {
+            window.requestAnimationFrame(this.draw.bind(this));
             return;
         }
         if(!this.lastTimestamp)
@@ -945,12 +1054,126 @@ class App {
         if(this.editMode) {
             map.staticLights[map.staticLights.length-1].position = this.getEditorPos();
         }
-        map.setUniforms(this.programs[0]);
+        else {
+            //gameplay
+            for(let i = 1; i < map.dynamicCubes.length; i++) {
+                if((map.dynamicCubes[i].set === false || map.dynamicCubes[i].set === true && map.dynamicCubes[i].t < 500) && length(sub(this.cameraPos, scale(add(map.dynamicCubes[i].pos1, map.dynamicCubes[i].pos2), 0.5))) < 2) {
+                    if(!map.dynamicCubes[i].set) {
+                        map.dynamicCubes[i].set = true;
+                        map.dynamicCubes[i].t = 0;
+                        this.cubesLit++;
+                    }
+                    let t = map.dynamicCubes[i].t;
+                    map.dynamicCubes[i].material.emission = [2.0 * t, 0.8 * t, 1.5 * t];
 
-        if(this.lastTimestamp < 3000 && timestamp >= 3000) {
-            map.setBlock(5, 3, 5, 1);
+                    map.dynamicCubes[i].t += timestamp - this.lastTimestamp;
+                }
+            }
+            if(this.cubesLit == map.dynamicCubes.length - 1) {
+                if(map.dynamicCubes[0].set === true && length(sub(this.cameraPos, scale(add(map.dynamicCubes[0].pos1, map.dynamicCubes[0].pos2), 0.5))) < 2) {
+                    this.resetLevel(true);
+                }
+                let level = 1.0;
+                if(map.dynamicCubes[0].set === false) {
+                    map.dynamicCubes[0].set = true;
+                }
+                if(map.dynamicCubes[0].t < 500) {
+                    level = map.dynamicCubes[0].t / 500;
+
+                    map.dynamicCubes[0].t += timestamp - this.lastTimestamp;
+                }
+                map.dynamicCubes[0].material.emission = scale([1000 * Math.sin(timestamp/300 + 200), 1000 * Math.sin(timestamp/400 + 700), 1000 * Math.sin(timestamp/500)], level);
+            }
+            
+            for(let i = 0; i < map.dynamicSpheres.length; i++) 
+            {
+                let sphere = map.dynamicSpheres[i];
+                if(sphere.type == 0) {
+                    if(sphere.mob == 0) {
+                        //mob
+                        if(sphere.t <= 0) {
+                            if(length(sub(this.cameraPos, sphere.position)) > sphere.activationRadius || sphere.hp <= 0) {
+                                continue;
+                            }
+                            if(Math.random() < -sphere.t/200000) {
+                                sphere.t = 0.1;
+                            }
+                            else {
+                                sphere.t-= timestamp - this.lastTimestamp;
+                            }
+                        }
+                        if(sphere.t > 0) {
+                            if(sphere.t < 1000) {
+                                sphere.material.emission = scale([1000, 200, 100], sphere.t/1000);
+                                sphere.t+= timestamp - this.lastTimestamp;
+                            }
+                            else {
+                                sphere.material.emission = [0.0, 0.0, 0.0];
+                                sphere.t = 0;
+                                //shoot
+                                let dir = normalize(sub(sphere.position, this.cameraPos));
+                                map.dynamicSpheres.push({
+                                    position: sphere.position,
+                                    radius: 0.1,
+                                    material: new Material(0.0, [0.0, 0.0, 0.0], 0.0, [1000, 0, 0]),
+                                    type: 1,
+                                    direction: scale(dir, -1),
+                                    speed: 9,
+                                    t: 0,
+                                    livetime: 5000,
+                                    side: 0
+                                });
+
+                            }
+                        }
+                    }
+                    else {
+                        if(length(sub(this.cameraPos, sphere.position)) > sphere.activationRadius || sphere.hp <= 0) {
+                            continue;
+                        }
+                        let dir = scale(normalize(sub(sphere.position, this.cameraPos)), -1);
+                        sphere.position = add(sphere.position, scale(dir, (timestamp - this.lastTimestamp)/1000 * sphere.speed));
+                    }
+                }
+                else if(sphere.type == 1) {
+                    //bullet
+                    if(sphere.t < sphere.livetime) {
+                        sphere.t+= timestamp - this.lastTimestamp;
+                        if(sphere.t < 1000) {
+                            sphere.position = add(sphere.position, scale(sphere.direction, (timestamp - this.lastTimestamp)/1000 * sphere.speed));
+                        }
+                    }
+                    if(sphere.side == 1) {
+                        //check collision 
+                        for(let j = 0; j < map.dynamicSpheres.length; j++) {
+                            let sphere2 = map.dynamicSpheres[j];
+                            if(sphere2.type != 1 && length(sub(sphere.position, sphere2.position)) < sphere.radius + sphere2.radius){
+                                sphere.t = sphere.livetime;
+                                sphere2.hp--;
+                                if(sphere2.hp <= 0) {
+                                    sphere2.material.albedo = [0.3, 0.0, 0.0];
+                                }
+                            }
+                        }
+                    }
+                }
+                if(sphere.type == 1 && sphere.side == 0 || sphere.type == 0 && sphere.mob == 1) {
+                    //check collision with player
+                    if(length(sub(sphere.position, this.cameraPos)) < sphere.radius + 0.5) {
+                        sphere.t = sphere.livetime;
+                        this.hp--;
+                        if(this.hp <= 0)
+                            this.resetLevel(false);
+                    }
+                }
+            }
+
         }
-        map.updateBlocks();
+        map.dynamicSpheres = map.dynamicSpheres.filter(sphere => sphere.type != 1 || sphere.t < sphere.livetime);
+        map.setUniforms(this.programs[0]);
+        map.updateBlocks(this.programs[0]);
+
+        
 
         //draw
         let program = this.programs[this.currentProgram];

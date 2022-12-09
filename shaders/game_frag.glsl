@@ -12,7 +12,7 @@ uniform vec3 u_cameraPos;
 uniform vec3 u_cameraVec;
 
 //blocks precompute data
-const float PixelsPerSample = 100.0;
+const float PixelsPerSample = 80.0;
 const int SampleLength = 40;
 uniform sampler2D u_precompTex;
 uniform isampler2D u_precompMappingData;
@@ -64,7 +64,7 @@ uniform int u_numDynamicCubes;
 uniform Cube u_dynamicCubes[20];
 
 uniform int u_numDynamicSpheres;
-uniform Sphere u_dynamicSpheres[10];
+uniform Sphere u_dynamicSpheres[30];
 
 uniform int u_numFakePointLights;
 uniform PointLight u_fakePointLights[10];

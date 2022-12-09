@@ -12,12 +12,11 @@ uniform vec3 u_cameraPos;
 uniform vec3 u_cameraVec;
 
 //precompute info
-const int buf_size = 4020;
 const int pack_factor = 16;
 uniform int u_sampleCount;
 uniform isampler2D u_packedDataTex;
 
-const int PixelsPerSample = 100;
+const int PixelsPerSample = 80;
 const int SampleLength = 40;
 
 //scene data
@@ -334,7 +333,7 @@ vec3 pathTrace(Ray ray) {
     }
     return lightColor * throughput;
 }
-const int SAMPLES = 8;
+const int SAMPLES = 4;
 const float aa_factor = 0.0;
 void main() {
     cur_seed = u_seed;

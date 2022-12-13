@@ -76,7 +76,12 @@ struct Ray {
 };
 
 float random(vec3 scale, float seed) {
-    return fract(sin(dot(gl_FragCoord.xyz + seed, scale)) * 43758.5453 + seed);
+    float res = fract(sin(dot(gl_FragCoord.xyz + seed, scale)) * 8241.52453 + seed);
+    if(res == 0.0) {
+        res = fract(sin(dot(gl_FragCoord.xyz + seed + 0.1236, scale)) * 2351.97625 + seed);
+    }
+
+    return res;
 }
 
 void createCoordinateSystem(vec3 normal, out vec3 tangent, out vec3 bitangent) {
@@ -288,7 +293,12 @@ vec3 pathTrace(Ray ray) {
                 lightColor = intersection.material.emission;
             break;
         } else {
+            // vec3 refractionGlassCoefs = vec3(1.39, 1.44, 1.47);
+            // float maskFactor = random(vec3(412.1238, 237.478, 483.127), cur_seed + float(depth)+1.63);
+            // vec3 mask = vec3(step(0.0, maskFactor) - step(0.3333, maskFactor), step(0.3333, maskFactor) - step(0.6666, maskFactor), step(0.6666, maskFactor) - step(1.0, maskFactor));
+            
             if(intersection.material.isGlass) {
+                // float n = dot(refractionGlassCoefs, mask);
                 float n = 1.5;
                 float R0 = (1.0 - n) / (1.0 + n);
                 R0 = R0 * R0;
@@ -302,6 +312,7 @@ vec3 pathTrace(Ray ray) {
                 float R = R0 + (1.0 - R0) * pow(1.0 - cost1, 5.0); // Schlick's approximation
                 if (cost2 > 0.0 && random(vec3(252.315, 26.236, 152.9342), cur_seed + float(depth)) > R) {
                     ray.dir = normalize(n * ray.dir + (n * cost1 - sqrt(cost2)) * intersection.normal);
+                    // throughput *= mask * 3.0;
                 } else {
                     ray.dir = normalize(reflect(ray.dir, intersection.normal));
                 }

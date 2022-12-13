@@ -208,6 +208,11 @@ let defaultMap = {
             radius: 0.8,
             material: new GlassMaterial(0.9)
         },
+        {
+            position: [7.3, 2.5, 3.5],
+            radius: 1.0,
+            material: new Material(0.8, [1.0, 0.85, 0.6], 0.3, [0.0, 0.0, 0.0])
+        }
     ],
     dynamicCubes: [
         {
@@ -338,6 +343,15 @@ class Map {
         app.programs[1].genMapping();
         this.blocksDirty = false;
     }
+    needBaking(primary, secondary) {
+        if(primary == -1)
+            return false;
+        let isPrimaryGlass = this.materials[this.blocks[primary]].isGlass;
+        if(secondary == -1)
+            return !isPrimaryGlass;
+        let isSecondaryGlass = this.materials[this.blocks[secondary]].isGlass;
+        return isPrimaryGlass && !isSecondaryGlass;
+    }
 }
 
 let map = new Map();
@@ -451,27 +465,27 @@ class RTR extends Prog {
                 for(let i = 0; i < map.blocks_dims[2]; i++) {
                     let material = map.blocks[vec3ToLin([i,j,k], map.blocks_dims)];
                     if(material != -1) {
-                        if(this.getAdjacentBlock([i-1, j, k]) == -1 || this.getAdjacentBlock([i-1, j, k]) == 2) {
+                        if(map.needBaking(material, this.getAdjacentBlock([i-1, j, k]))) {
                             this.precompMapping[vec3ToLin([i, j, k], map.blocks_dims) + 4096 * 0] = sampleCounter; 
                             sampleCounter++;
                         }
-                        if(this.getAdjacentBlock([i+1, j, k]) == -1 || this.getAdjacentBlock([i+1, j, k]) == 2) {
+                        if(map.needBaking(material, this.getAdjacentBlock([i+1, j, k]))) {
                             this.precompMapping[vec3ToLin([i, j, k], map.blocks_dims) + 4096 * 1] = sampleCounter; 
                             sampleCounter++;
                         }
-                        if(this.getAdjacentBlock([i, j-1, k]) == -1 || this.getAdjacentBlock([i, j-1, k]) == 2) {
+                        if(map.needBaking(material, this.getAdjacentBlock([i, j-1, k]))) {
                             this.precompMapping[vec3ToLin([i, j, k], map.blocks_dims) + 4096 * 2] = sampleCounter; 
                             sampleCounter++;
                         }
-                        if(this.getAdjacentBlock([i, j+1, k]) == -1 || this.getAdjacentBlock([i, j+1, k]) == 2) {
+                        if(map.needBaking(material, this.getAdjacentBlock([i, j+1, k]))) {
                             this.precompMapping[vec3ToLin([i, j, k], map.blocks_dims) + 4096 * 3] = sampleCounter; 
                             sampleCounter++;
                         }
-                        if(this.getAdjacentBlock([i, j, k-1]) == -1 || this.getAdjacentBlock([i, j, k-1]) == 2) {
+                        if(map.needBaking(material, this.getAdjacentBlock([i, j, k-1]))) {
                             this.precompMapping[vec3ToLin([i, j, k], map.blocks_dims) + 4096 * 4] = sampleCounter; 
                             sampleCounter++;
                         }
-                        if(this.getAdjacentBlock([i, j, k+1]) == -1 || this.getAdjacentBlock([i, j, k+1]) == 2) {
+                        if(map.needBaking(material, this.getAdjacentBlock([i, j, k+1]))) {
                             this.precompMapping[vec3ToLin([i, j, k], map.blocks_dims) + 4096 * 5] = sampleCounter; 
                             sampleCounter++;
                         }
@@ -563,27 +577,27 @@ class Precomputer extends Prog {
                 for(let i = 0; i < map.blocks_dims[2]; i++) {
                     let material = map.blocks[vec3ToLin([i,j,k], map.blocks_dims)];
                     if(material != -1) {
-                        if(this.getAdjacentBlock([i-1, j, k]) == -1 || this.getAdjacentBlock([i-1, j, k]) == 2) {
+                        if(map.needBaking(material, this.getAdjacentBlock([i-1, j, k]))) {
                             this.samplesPacked[sampleCounter] = pack5_16([-1, i,j,k, -1]);
                             sampleCounter++;
                         }
-                        if(this.getAdjacentBlock([i+1, j, k]) == -1 || this.getAdjacentBlock([i+1, j, k]) == 2) {
+                        if(map.needBaking(material, this.getAdjacentBlock([i+1, j, k]))) {
                             this.samplesPacked[sampleCounter] = pack5_16([-1, i,j,k, 1]);
                             sampleCounter++;
                         }
-                        if(this.getAdjacentBlock([i, j-1, k]) == -1 || this.getAdjacentBlock([i, j-1, k]) == 2) {
+                        if(map.needBaking(material, this.getAdjacentBlock([i, j-1, k]))) {
                             this.samplesPacked[sampleCounter] = pack5_16([-1, i,j,k, -2]);
                             sampleCounter++;
                         }
-                        if(this.getAdjacentBlock([i, j+1, k]) == -1 || this.getAdjacentBlock([i, j+1, k]) == 2) {
+                        if(map.needBaking(material, this.getAdjacentBlock([i, j+1, k]))) {
                             this.samplesPacked[sampleCounter] = pack5_16([-1, i,j,k, 2]);
                             sampleCounter++;
                         }
-                        if(this.getAdjacentBlock([i, j, k-1]) == -1 || this.getAdjacentBlock([i, j, k-1]) == 2) {
+                        if(map.needBaking(material, this.getAdjacentBlock([i, j, k-1]))) {
                             this.samplesPacked[sampleCounter] = pack5_16([-1, i,j,k, -3]);
                             sampleCounter++;
                         }
-                        if(this.getAdjacentBlock([i, j, k+1]) == -1 || this.getAdjacentBlock([i, j, k+1]) == 2) {
+                        if(map.needBaking(material, this.getAdjacentBlock([i, j, k+1]))) {
                             this.samplesPacked[sampleCounter] = pack5_16([-1, i,j,k, 3]);
                             sampleCounter++;
                         }

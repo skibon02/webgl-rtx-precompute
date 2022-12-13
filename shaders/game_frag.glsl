@@ -94,12 +94,6 @@ struct Ray {
     vec3 dir;
 };
 
-float random(vec3 scale, float seed) {
-    return fract(sin(dot(gl_FragCoord.xyz + seed, scale)) * 43758.5453 + seed);
-}
-
-
-
 Intersection intersectSphere(Ray ray, Sphere sphere) {
     Intersection res;
     res.distance = -1.0;
@@ -471,7 +465,6 @@ vec3 pathTrace(Ray ray) {
             float cost1 = (-dot(ray.dir, intersection.normal));
             float cost2 = 1.0 - n * n * (1.0 - cost1 * cost1);
             float R = R0 + (1.0 - R0) * pow(1.0 - cost1, 5.0); // Schlick's approximation
-            cur_seed += random(vec3(16.231, 132.52, 25.3215), cur_seed);
             throughput *= intersection.material.albedo;
             if(cost2 > 0.0) {
                 if(hitGlassI > 0)
@@ -482,6 +475,7 @@ vec3 pathTrace(Ray ray) {
                     if(hitGlassI == 0 && decision % 2 == 0 || hitGlassI == 1 && decision / 2 == 0) {
                         ray.dir = normalize(reflect(ray.dir, intersection.normal));
                         throughput *= R;
+                        throughput *= intersection.material.albedoFactor; // reflection coef
                     }
                     else {
                         //refraction
@@ -491,6 +485,7 @@ vec3 pathTrace(Ray ray) {
             }
             else {
                 ray.dir = normalize(reflect(ray.dir, intersection.normal));
+                throughput *= intersection.material.albedoFactor; // reflection coef
             }
             hitGlass = true;
             hitGlassI++;
@@ -526,7 +521,6 @@ vec3 pathTrace(Ray ray) {
     }
     return resColor + lightColor * throughput;
 }
-const float aa_factor = 0.0;
 void main() {
     cur_seed = u_seed;
     Ray ray;
@@ -548,13 +542,6 @@ void main() {
     int samples_n = 1;
     for(int i = 0; i < samples_n; i++) {
         decision = i;
-        if(aa_factor > 0.0) {
-            ray.dir.x += (random(vec3(525.315, 126.26, 12.42), cur_seed + float(i)) - 0.5) / u_resolution.x * aa_factor;
-            ray.dir.y += (random(vec3(125.231, 162.135, 115.321), cur_seed + float(i)) - 0.5) / u_resolution.y * aa_factor;
-            ray.dir.z += (random(vec3(23.157, 426.84, 425.721), cur_seed + float(i)) - 0.5) / u_resolution.y * aa_factor;
-            ray.dir = normalize(ray.dir);
-        }
-        cur_seed += random(vec3(315.231, 13.5123, 125.3215), cur_seed + float(i));
         col += pathTrace(ray);
         if(hitGlass)
             samples_n= 2;

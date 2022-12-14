@@ -85,25 +85,20 @@ float random(vec3 scale, float seed) {
 }
 
 void createCoordinateSystem(vec3 normal, out vec3 tangent, out vec3 bitangent) {
-    if (abs(normal.x) > abs(normal.z)) {
-        float invLen = 1.0 / sqrt(normal.x * normal.x + normal.y * normal.y);
-        tangent = vec3(-normal.y * invLen, normal.x * invLen, 0.0);
+    if (abs(normal.x) < 0.5) {
+        tangent = cross(normal, vec3(1.0, 0.0, 0.0));
     } else {
-        float invLen = 1.0 / sqrt(normal.y * normal.y + normal.z * normal.z);
-        tangent = vec3(0.0, -normal.z * invLen, normal.y * invLen);
+        tangent = cross(normal, vec3(0.0, 1.0, 0.0));
     }
     bitangent = cross(normal, tangent);
 }
 vec3 cosineWeightedDirection(float seed, vec3 normal) {
-    vec3 rotX, rotY;
-    createCoordinateSystem(normal, rotX, rotY);
+    vec3 u, v;
+    createCoordinateSystem(normal, u, v);
     float r1 = 2.0 * PI * random(vec3(12.9898, 78.233, 151.7182), seed);
     float r2 = random(vec3(63.7264, 10.873, 623.6736), seed);
     float r2s = sqrt(r2);
-    vec3 w = normal;
-    vec3 u = rotX;
-    vec3 v = rotY;
-    vec3 d = normalize(u * cos(r1) * r2s + v * sin(r1) * r2s + w * sqrt(1.0 - r2));
+    vec3 d = normalize(u * cos(r1) * r2s + v * sin(r1) * r2s + normal * sqrt(1.0 - r2));
     return d;
 }
 
@@ -330,7 +325,7 @@ vec3 pathTrace(Ray ray) {
 
                     ray.dir = cosineWeightedDirection(cur_seed + float(depth), intersection.normal);
                     float cost = dot(ray.dir, intersection.normal);
-                    throughput *= intersection.material.albedo * intersection.material.albedoFactor * cost / PI;
+                    throughput *= intersection.material.albedo * intersection.material.albedoFactor / PI;
                 } else {
                     //reflection
                     float cost = dot(ray.dir, intersection.normal);
@@ -460,7 +455,6 @@ void main() {
                 scale = 0.0;
             }
         }
-        float cost = dot(ray.dir, norm);
         if(aa_factor > 0.0) {
             ray.dir.x += (random(vec3(525.315, 126.26, 12.42), cur_seed + float(i)) - 0.5) / u_resolution.x * aa_factor;
             ray.dir.y += (random(vec3(125.231, 162.135, 115.321), cur_seed + float(i)) - 0.5) / u_resolution.y * aa_factor;
@@ -468,7 +462,7 @@ void main() {
             ray.dir = normalize(ray.dir);
         }
         cur_seed += random(vec3(315.231, 13.5123, 125.3215), cur_seed + float(i));
-        col += pathTrace(ray) * cost * scale;
+        col += pathTrace(ray) * scale;
     }
     col /= float(samples_n);
     col *=  finalLumScale;

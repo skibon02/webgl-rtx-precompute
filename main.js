@@ -78,79 +78,6 @@ class GlassMaterial extends Material {
 let defaultMap = {
     blocks_dims: [16, 16, 16],
     blocks: [],
-    // staticLights: [
-    //     {
-    //         position: [7, 4, -2],
-    //         power: [13000.0, 13000.0, 13000.0],
-    //         radius: 1.0
-    //     },
-    //     {
-    //         position: [7, 15.4, -2],
-    //         power: [3000.0, 13000.0, 13000.0],
-    //         radius: 1.0
-    //     },
-    //     {
-    //         position: [-2, 4.4, 9],
-    //         power: [13000.0, 3000.0, 13000.0],
-    //         radius: 1.0
-    //     },
-    //     {
-    //         position: [7, 6.4, 17],
-    //         power: [13000.0, 13000.0, 3000.0],
-    //         radius: 1.0
-    //     },
-    //     {
-    //         position: [5, 9, 5],
-    //         power: [23000.0, 23000.0, 23000.0],
-    //         radius: 1.0
-    //     },
-    //     {
-    //         position: [8.5, 2.8, 5.5],
-    //         power: [150000.0, 10000.0, 50000.0],
-    //         radius: 0.3
-    //     }
-    // ],
-    // fakeLights: [
-    //     [13, 9, -3]
-    // ],
-    
-    // materials: [
-    //     new Material(0.8, [0.4, 0.8, 0.8]),
-    //     new Material(0.8, [0.8, 0.2, 0.8], 0.0),
-    //     new GlassMaterial(0.9),
-    //     new Material(0.8, [0.8, 0.8, 0.8]),
-    // ],
-    // spheres: [
-    //     {
-    //         position: [5.0, 5.0, 5.0],
-    //         radius: 1.0,
-    //         material: new GlassMaterial(0.9)
-    //     },
-    //     {
-    //         position: [7.3, 2.5, 3.5],
-    //         radius: 0.49,
-    //         material: new Material(0.6, [1.0, 0.6, 0.8], 0.0, [1.0, 1.0, 1.0])
-    //     }
-    // ],
-    // dynamicSpheres: [
-    //     {
-    //         position: [5.5, 2.5, 1.5],
-    //         radius: 0.5,
-    //         material: new GlassMaterial(0.9)
-    //     },
-    //     {
-    //         position: [7.5, 2.5, 1.5],
-    //         radius: 0.5,
-    //         material: new Material(0.6, [1.0, 0.6, 0.3], 0.8, [1.0, 1.0, 1.0])
-    //     }
-    // ],
-    // dynamicCubes: [
-    //     {
-    //         pos1: [5.5, 2.5, 1.5],
-    //         pos2: [6.5, 3.5, 2.5],
-    //         material: new Material(0.9, [1.0, 1.0, 1.0], 0.0, [1.0, 1.0, 1.0])
-    //     }
-    // ]
     fakeLights: [
         [6, 6, 4]
     ],
@@ -346,11 +273,11 @@ class Map {
     needBaking(primary, secondary) {
         if(primary == -1)
             return false;
-        let isPrimaryGlass = this.materials[this.blocks[primary]].isGlass;
+        let isPrimaryGlass = this.materials[primary].isGlass;
         if(secondary == -1)
             return !isPrimaryGlass;
-        let isSecondaryGlass = this.materials[this.blocks[secondary]].isGlass;
-        return isPrimaryGlass && !isSecondaryGlass;
+        let isSecondaryGlass = this.materials[secondary].isGlass;
+        return !isPrimaryGlass && isSecondaryGlass;
     }
 }
 

@@ -85,7 +85,7 @@ struct Intersection {
     float distance;
 
     int objectUID;
-    vec3 luminosity;
+    vec3 luminosity; // -1 if object doesn't contain light info
     Material material;
 };
 
@@ -348,7 +348,7 @@ Intersection intersect(Ray ray) {
         if (res.distance > eps && (intersection.distance < 0.0 || res.distance < intersection.distance)) {
             intersection = res;
             intersection.luminosity = vec3(-1.0);
-            intersection.objectUID = 100 * i;
+            intersection.objectUID = 100 * (i+1);
         }
     }
     //dynamicCubes
@@ -358,7 +358,7 @@ Intersection intersect(Ray ray) {
         if (res.distance > eps && (intersection.distance < 0.0 || res.distance < intersection.distance)) {
             intersection = res;
             intersection.luminosity = vec3(-1.0);
-            intersection.objectUID = 10000 * i;
+            intersection.objectUID = 10000 * (i+1);
         }
     }
 
@@ -366,32 +366,41 @@ Intersection intersect(Ray ray) {
 }
 
 float isInDynamicShadow(Intersection intersection) {
+    return 0.0;
     int shadowCNT = 0;
     int originalUID = intersection.objectUID;
     for (int i = 0; i < u_numFakePointLights; i++) {
         PointLight fakePointLight = u_fakePointLights[i];
         vec3 lightDir = normalize(fakePointLight.position - intersection.position);
-        float lightDistance = length(fakePointLight.position - intersection.position);
+        float lightDistance = (fakePointLight.position - intersection.position).x / lightDir.x;
 
         bool foundStaticObject = false;
         bool foundDynamicObject = false;
 
-        Ray shadowRay = Ray(intersection.position + intersection.normal * eps, lightDir);
+        vec3 initialPos = intersection.position + intersection.normal * eps;
+        Ray shadowRay = Ray(initialPos, lightDir);
         Intersection shadowIntersection = intersect(shadowRay);
-        float totalDistance = shadowIntersection.distance;
-        while (totalDistance >= eps && totalDistance <= lightDistance && shadowIntersection.distance != -1.0) {
-            if(shadowIntersection.luminosity.x != -1.0)
+        float totalDistance = eps + shadowIntersection.distance;
+        while (shadowIntersection.distance >= eps && totalDistance <= lightDistance) {
+
+            if(shadowIntersection.luminosity.x >= 0.0) {
                 foundStaticObject = true;
-            else {
-                if(shadowIntersection.objectUID != originalUID)
-                    foundDynamicObject = true;
+                break; //early quit optimization
             }
-            totalDistance += shadowIntersection.distance + eps*5.0;
-            shadowRay.origin = intersection.position + shadowIntersection.normal * eps + totalDistance * lightDir;
+            else {
+                if(shadowIntersection.objectUID != originalUID) {
+                    foundDynamicObject = true;
+                }
+            }
+            break;
+            shadowRay.origin +=  eps * 5.0 * lightDir;
             shadowIntersection = intersect(shadowRay);
+            if(shadowIntersection.distance == -1.0)
+                break;
+            totalDistance += shadowIntersection.distance;
         }
 
-        if(!foundStaticObject && foundDynamicObject)
+        if(foundDynamicObject && !foundStaticObject)
             shadowCNT++;
     }
     return float(shadowCNT) / float(u_numFakePointLights);

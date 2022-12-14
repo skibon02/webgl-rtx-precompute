@@ -19,6 +19,8 @@ uniform isampler2D u_packedDataTex;
 const int PixelsPerSample = 80;
 const int SampleLength = 48;
 
+uniform int u_curLightGroup;
+
 //scene data
 uniform ivec3 u_sceneSize;  //x,y,z dimensions
 uniform isampler3D u_blocksData;    // material at block x+y*sceneSize.x+z*sceneSize.x*sceneSize.y
@@ -29,6 +31,13 @@ struct Material {
     float reflectivity;
     float albedoFactor;
     bool isGlass;
+    int lightGroup;
+};
+
+struct Cube {
+    vec3 min;
+    vec3 max;
+    Material material;
 };
 
 uniform Material[20] u_materials;
@@ -38,6 +47,7 @@ struct SolidLight {
     vec3 position;
     vec3 power;
     float radius;
+    int lightGroup;
 };
 
 struct Sphere {
@@ -51,6 +61,9 @@ uniform Sphere u_spheres[10];
 
 uniform int u_numStaticLights;
 uniform SolidLight u_staticLights[10];
+
+uniform int u_numCubes;
+uniform Cube u_cubes[20];
 
 //      DATA SECTION END
 
@@ -234,6 +247,46 @@ Intersection intersectBlocks(Ray ray) {
     return res;
 }
 
+
+Intersection intersectCube(Ray ray, Cube cube) {
+    Intersection res;
+    res.distance = -1.0;
+
+    vec3 rayDirInv = 1.0 / ray.dir;
+    vec3 tMin = (cube.min - ray.origin) * rayDirInv;
+    vec3 tMax = (cube.max - ray.origin) * rayDirInv;
+    vec3 t1 = min(tMin, tMax);
+    vec3 t2 = max(tMin, tMax);
+    float tNear = max(max(t1.x, t1.y), t1.z);
+    float tFar = min(min(t2.x, t2.y), t2.z);
+
+    vec3 stepsign = sign(ray.dir);
+    vec3 dirmask;
+    if(tNear == t1.x) dirmask.x = 1.0;
+    else
+        if(tNear == t1.y) dirmask.y = 1.0;
+        else
+            if(tNear == t1.z) dirmask.z = 1.0;
+
+    if (tNear < tFar && tFar > eps) {
+        float t = tNear;
+        if(tNear < eps) {
+            t = tFar;
+            if(tFar == t2.x) dirmask.x = 1.0;
+            else
+                if(tFar == t2.y) dirmask.y = 1.0;
+                else
+                    if(tFar == t2.z) dirmask.z = 1.0;
+        }
+        res.distance = t;
+        res.position = ray.origin + ray.dir * t;
+        res.normal = -stepsign * dirmask;
+        res.material = cube.material;
+    }
+
+    return res;
+}
+
 Intersection intersect(Ray ray) {
     Intersection intersection;
     intersection.distance = -1.0;
@@ -249,7 +302,7 @@ Intersection intersect(Ray ray) {
 
     for (int i = 0; i < u_numStaticLights; i++) {
         SolidLight solidLight = u_staticLights[i];
-        Sphere sphere = Sphere(solidLight.position, solidLight.radius, Material(vec3(0.0), vec3(solidLight.power), 0.0, 0.0, false));
+        Sphere sphere = Sphere(solidLight.position, solidLight.radius, Material(vec3(0.0), vec3(solidLight.power), 0.0, 0.0, false, solidLight.lightGroup));
         Intersection res = intersectSphere(ray, sphere);
         if (res.distance > eps && (intersection.distance < 0.0 || res.distance < intersection.distance)) {
             intersection = res;
@@ -261,6 +314,17 @@ Intersection intersect(Ray ray) {
     if (res.distance > eps && (intersection.distance < 0.0 || res.distance < intersection.distance)) {
         intersection = res;
     }
+
+    // collision with cubes
+    for (int i = 0; i < u_numCubes; i++) {
+        Cube cube = u_cubes[i];
+        Intersection res = intersectCube(ray, cube);
+        if (res.distance > eps && (intersection.distance < 0.0 || res.distance < intersection.distance)) {
+            intersection = res;
+        }
+    }
+    if(intersection.material.lightGroup != u_curLightGroup)
+        intersection.material.emission = vec3(0.0);
 
     return intersection;
 }

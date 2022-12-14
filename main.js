@@ -59,18 +59,25 @@ var saveByteArray = (function () {
 
 
 class Material {
-    constructor(albedoFactor = 0.8, albedo = [1.0, 1.0, 1.0], reflectivity = 0.0, emission = [0.0, 0.0, 0.0], isGlass = false) {
+    constructor(albedoFactor = 0.8, albedo = [1.0, 1.0, 1.0], reflectivity = 0.0, emission = [0.0, 0.0, 0.0], isGlass = false, lightGroup=0) {
         this.albedoFactor = albedoFactor;
         this.albedo = albedo;
         this.reflectivity = reflectivity;
         this.emission = emission;
         this.isGlass = isGlass;
+        this.lightGroup = lightGroup;
     }
 }
 class GlassMaterial extends Material {
     constructor(albedofactor = 0.8, albedo = [1.0, 1.0, 1.0]) {
         super(albedofactor, albedo);
         this.isGlass = true;
+    }
+}
+
+class EmissionMaterial extends Material {
+    constructor(emission = [1.0, 1.0, 1.0], lightGroup = 0) {
+        super(0.0, [0.0, 0.0, 0.0], 0.0, emission, false , lightGroup);
     }
 }
 
@@ -92,17 +99,20 @@ let defaultMap = {
         {
             position: [6, 8, 4],
             power: [10000.0, 32000.0, 40000.0],
-            radius: 1.0
+            radius: 1.0,
+            lightGroup: 0
         },
         {
             position: [9, 12, 12],
             power: [40000.0, 12000.0, 10000.0],
-            radius: 1.0
+            radius: 1.0,
+            lightGroup: 1
         },
         {
             position: [9.5, 7.5, 5],
             power: [300000.0, 12000.0, 150000.0],
-            radius: 0.3
+            radius: 0.3,
+            lightGroup: 2
         }
     ],
     dynamicSpheres: [
@@ -141,35 +151,45 @@ let defaultMap = {
             material: new Material(0.8, [1.0, 0.85, 0.6], 0.3, [0.0, 0.0, 0.0])
         }
     ],
-    dynamicCubes: [
+    cubes: [
         {
             pos1: [12.31, 1.31, 12.31],
             pos2: [12.69, 1.69, 12.69],
-            material: new Material(0.9, [1.0, 1.0, 1.0], 0.0, [1.0, 1.0, 1.0]),
+            material: new Material(0.9, [1.0, 1.0, 1.0], 0.0, [3000, 3000, 3000], false, 4),
             set: false,
             t: 0.0
         },
         {
             pos1: [6, 1, 6],
             pos2: [5, 2, 7],
-            material: new Material(0.9, [1.0, 1.0, 1.0], 0.0, [1.0, 1.0, 1.0]),
+            material: new Material(0.9, [1.0, 1.0, 1.0], 0.0, [2000, 800, 1500], false, 5),
             set: false,
             t: 0.0
         },
         {
             pos1: [1, 1, 4],
             pos2: [2, 2, 5],
-            material: new Material(0.9, [1.0, 1.0, 1.0], 0.0, [1.0, 1.0, 1.0]),
+            material: new Material(0.9, [1.0, 1.0, 1.0], 0.0, [2000, 800, 1500], false, 6),
             set: false,
             t: 0.0
         },
         {
             pos1: [9, 1, 10],
             pos2: [8, 2, 11],
-            material: new Material(0.9, [1.0, 1.0, 1.0], 0.0, [1.0, 1.0, 1.0]),
+            material: new Material(0.9, [1.0, 1.0, 1.0], 0.0, [2000, 800, 1500], false, 7),
             set: false,
             t: 0.0
-        }
+        },
+    ],
+    lightGroups: [
+        [1.0, 1.0, 1.0],
+        [0, 0, 0],
+        [0, 0, 0],
+        [1.0, 1.0, 1.0],
+        [0, 0, 0],
+        [0, 0, 0],
+        [0, 0, 0],
+        [0, 0, 0],
     ],
     name: "map1"
 }
@@ -214,6 +234,7 @@ class Map {
         gl.uniform3fv(prog.u_(loc + ".albedo"), material.albedo);
         gl.uniform3fv(prog.u_(loc + ".emission"), material.emission);
         gl.uniform1i(prog.u_(loc + ".isGlass"), material.isGlass);
+        gl.uniform1i(prog.u_(loc + ".lightGroup"), material.lightGroup);
     }
     setUniforms(prog, onlyStatic = false) {
         gl.useProgram(prog.program);
@@ -222,6 +243,7 @@ class Map {
             gl.uniform3fv(prog.u_("staticLights[" + i + "].position"), this.staticLights[i].position);
             gl.uniform3fv(prog.u_("staticLights[" + i + "].power"), this.staticLights[i].power);
             gl.uniform1f(prog.u_("staticLights[" + i + "].radius"), this.staticLights[i].radius);
+            gl.uniform1i(prog.u_("staticLights[" + i + "].lightGroup"), this.staticLights[i].lightGroup);
         }
         if(!onlyStatic) {
             gl.uniform1i(prog.u_("numFakePointLights"), this.fakeLights.length);
@@ -236,12 +258,12 @@ class Map {
                 this.setMaterialUniform(prog, "dynamicSpheres[" + i + "].material", this.dynamicSpheres[i].material);
             }
             
-            gl.uniform1i(prog.u_("numDynamicCubes"), this.dynamicCubes.length);
-            for(let i = 0; i < this.dynamicCubes.length; i++) {
-                gl.uniform3fv(prog.u_("dynamicCubes[" + i + "].min"), this.dynamicCubes[i].pos1);
-                gl.uniform3fv(prog.u_("dynamicCubes[" + i + "].max"), this.dynamicCubes[i].pos2);
-                this.setMaterialUniform(prog, "dynamicCubes[" + i + "].material", this.dynamicCubes[i].material);
-            }
+        }
+        gl.uniform1i(prog.u_("numCubes"), this.cubes.length);
+        for(let i = 0; i < this.cubes.length; i++) {
+            gl.uniform3fv(prog.u_("cubes[" + i + "].min"), this.cubes[i].pos1);
+            gl.uniform3fv(prog.u_("cubes[" + i + "].max"), this.cubes[i].pos2);
+            this.setMaterialUniform(prog, "cubes[" + i + "].material", this.cubes[i].material);
         }
 
         gl.uniform1i(prog.u_("numSpheres"), this.spheres.length);
@@ -249,6 +271,9 @@ class Map {
             gl.uniform3fv(prog.u_("spheres[" + i + "].center"), this.spheres[i].position);
             gl.uniform1f(prog.u_("spheres[" + i + "].radius"), this.spheres[i].radius);
             this.setMaterialUniform(prog, "spheres[" + i + "].material", this.spheres[i].material);
+        }
+        for(let i = 0; i < this.lightGroups.length; i++) {
+            gl.uniform3fv(prog.u_("lightGroupScale[" + i + "]"), this.lightGroups[i]);
         }
 
         for(let i = 0; i < this.materials.length; i++) {
@@ -263,7 +288,7 @@ class Map {
         if(!this.blocksDirty) {
             return;
         }
-        gl.activeTexture(gl.TEXTURE4);
+        gl.activeTexture(gl.TEXTURE0);
         gl.bindTexture(gl.TEXTURE_3D, sharedResources.blocksDataTex);
         gl.texImage3D(gl.TEXTURE_3D, 0, gl.R32I, this.blocks_dims[0], this.blocks_dims[1], this.blocks_dims[2], 0, gl.RED_INTEGER, gl.INT, new Int32Array(this.blocks));
         app.programs[0].genMapping();
@@ -425,7 +450,7 @@ class RTR extends Prog {
             }
         }
         console.log(sampleCounter);
-        gl.activeTexture(gl.TEXTURE3);
+        gl.activeTexture(gl.TEXTURE2);
         gl.bindTexture(gl.TEXTURE_2D, this.precompMappingData);
         gl.texImage2D(gl.TEXTURE_2D, 0, gl.R32I, 4096, 6, 0, gl.RED_INTEGER, gl.INT, new Int32Array(this.precompMapping));
     }
@@ -450,10 +475,18 @@ class RTR extends Prog {
 
         //set textures
         //shared:
-        gl.uniform1i(this.u_("precompTex"), 2);
-        gl.uniform1i(this.u_("blocksData"), 4);
+        gl.uniform1i(this.u_("precompTex[0]"), 3);
+        gl.uniform1i(this.u_("precompTex[1]"), 4);
+        gl.uniform1i(this.u_("precompTex[2]"), 5);
+        gl.uniform1i(this.u_("precompTex[3]"), 6);
+        gl.uniform1i(this.u_("precompTex[4]"), 7);
+        gl.uniform1i(this.u_("precompTex[5]"), 8);
+        gl.uniform1i(this.u_("precompTex[6]"), 9);
+        gl.uniform1i(this.u_("precompTex[7]"), 10);
+        gl.uniform1i(this.u_("blocksData"), 0);
+
         //local:
-        gl.uniform1i(this.u_("precompMappingData"), 3);
+        gl.uniform1i(this.u_("precompMappingData"), 2);
 
         //set scene data
         gl.uniform1i(this.u_("precompUsed"), 0);
@@ -467,8 +500,9 @@ class RTR extends Prog {
     }
 
     setTextureContent(data) {
-        gl.activeTexture(gl.TEXTURE2);
-        gl.bindTexture(gl.TEXTURE_2D, sharedResources.precompTex);
+        let unit = prompt("unit?");
+        gl.activeTexture(gl.TEXTURE3 + +unit);
+        gl.bindTexture(gl.TEXTURE_2D, sharedResources.precompTex[+unit]);
         gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA32F, 4096, 4096, 0, gl.RGBA, gl.FLOAT, data);
         this.rtxON();
     }
@@ -487,13 +521,26 @@ class RTR extends Prog {
 }
 
 class Precomputer extends Prog {
-    constructor() {
+    constructor(lightGroups) {
         super("precomputer");
         this.clearEnabled = false;
         this.samplesLength = 64;
         this.samplesPacked = new Array(8000);
         this.presentProg = new Prog("present");
         this.frames = 0;
+
+        this.curLightGroup = 0;
+        this.lightGroups = lightGroups;
+    }
+    switchLightGroup() {
+        this.curLightGroup = (this.curLightGroup + 1) % this.lightGroups;
+        gl.useProgram(this.program);
+        gl.uniform1i(this.u_("curLightGroup"), this.curLightGroup);
+        gl.bindFramebuffer(gl.FRAMEBUFFER, this.fbo);
+        gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, sharedResources.precompTex[this.curLightGroup], 0);
+
+        gl.useProgram(this.presentProg.program);
+        gl.uniform1i(this.presentProg.u_("texture"), 3 + this.curLightGroup);
     }
     
     genMapping() {
@@ -562,7 +609,7 @@ class Precomputer extends Prog {
         //create framebuffer
         this.fbo = gl.createFramebuffer();
         gl.bindFramebuffer(gl.FRAMEBUFFER, this.fbo);
-        gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, sharedResources.precompTex, 0);
+        gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, sharedResources.precompTex[this.curLightGroup], 0);
         gl.bindFramebuffer(gl.FRAMEBUFFER, null);
 
 
@@ -573,10 +620,11 @@ class Precomputer extends Prog {
 
         //set scene data
         gl.uniform3iv(this.u_("sceneSize"), map.blocks_dims);
+        gl.uniform1i(this.u_("curLightGroup"), this.curLightGroup);
 
         //textures
         //shared resources:
-        gl.uniform1i(this.u_("blocksData"), 4);
+        gl.uniform1i(this.u_("blocksData"), 0);
 
         //local resources:
         gl.uniform1i(this.u_("packedDataTex"), 1);
@@ -585,14 +633,15 @@ class Precomputer extends Prog {
         // INIT PRESENT SUBPROGRAM
         await this.presentProg.initProgram();
         gl.uniform2f(this.presentProg.u_("resolution"), 1920, 1080);
-        gl.uniform1i(this.presentProg.u_("texture"), 2);
+        gl.uniform1i(this.presentProg.u_("texture"), 3);
         gl.uniform1f(this.presentProg.u_("texSize"), 4096);
 
     }
 
     setTextureContent(float32Data) {
-        gl.activeTexture(gl.TEXTURE2);
-        gl.bindTexture(gl.TEXTURE_2D, sharedResources.precompTex);
+        let unit = prompt("unit?");
+        gl.activeTexture(gl.TEXTURE3 + +unit);
+        gl.bindTexture(gl.TEXTURE_2D, sharedResources.precompTex[+unit]);
         gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA32F, 4096, 4096, 0, gl.RGBA, gl.FLOAT, float32Data);
     }
 
@@ -646,7 +695,8 @@ class App {
         //angle of camera
         this.camera = [0, 0];
         this.move = [0, 0, 0];
-        
+        this.gameTime = 0;
+        this.gameON = false;
 
         this.editMode = false;
         this.editorLength = 2;
@@ -656,6 +706,8 @@ class App {
         this.hp = 5;
         this.moveSpeed = 3;
         this.rotateSenstivity = 0.001;
+
+        this.lightGroups = 8;
 
         this.initGraphics();
     }
@@ -700,18 +752,21 @@ class App {
         
         //INIT shared resources
         // unit2: precomputed texture
-        sharedResources.precompTex = gl.createTexture();
-        gl.activeTexture(gl.TEXTURE2);
-        gl.bindTexture(gl.TEXTURE_2D, sharedResources.precompTex);
-        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA32F, 4096, 4096, 0, gl.RGBA, gl.FLOAT, null);
-        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
-        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
-        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
-        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+        sharedResources.precompTex = [];
+        for(let i = 0; i < this.lightGroups; i++) {
+            sharedResources.precompTex[i] = gl.createTexture();
+            gl.activeTexture(gl.TEXTURE3 + i);
+            gl.bindTexture(gl.TEXTURE_2D, sharedResources.precompTex[i]);
+            gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA32F, 4096, 4096, 0, gl.RGBA, gl.FLOAT, null);
+            gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+            gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+            gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+            gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+        }
 
         // unit4: blocks data texture
         sharedResources.blocksDataTex = gl.createTexture();
-        gl.activeTexture(gl.TEXTURE4);
+        gl.activeTexture(gl.TEXTURE0);
         gl.bindTexture(gl.TEXTURE_3D, sharedResources.blocksDataTex);
         gl.texImage3D(gl.TEXTURE_3D, 0, gl.R32I, map.blocks_dims[0], map.blocks_dims[1], map.blocks_dims[2], 0, gl.RED_INTEGER, gl.INT, new Int32Array(map.blocks));
         gl.texParameteri(gl.TEXTURE_3D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
@@ -719,7 +774,7 @@ class App {
 
         //INIT PROGRAMS
         let editor_prog = new RTR();
-        let baking_prog = new Precomputer();
+        let baking_prog = new Precomputer(this.lightGroups);
 
         await editor_prog.initProgram();
         await baking_prog.initProgram();
@@ -755,7 +810,6 @@ class App {
                 let data = e.target.result;
                 
                 let loadedMap = JSON.parse(data);
-                debugger;
                 map.importMap(loadedMap);
                 map.setUniforms(this.programs[0], false);
                 map.setUniforms(this.programs[1], true);
@@ -847,6 +901,9 @@ class App {
             this.currentProgram = 0;
         }
         if(e.key == "2") {
+            if(this.currentProgram == 1) {
+                this.pendingSwitchLightGroup = true;
+            }
             this.currentProgram = 1;
         }
         if(e.key == "o") {
@@ -860,17 +917,17 @@ class App {
         if(e.key == "k") {
             if(!this.editMode) {
                 this.programs[0].rtxOFF();
-
+                debugger;
                 //add small sphere to the cursor
-                map.staticLights.push({
+                map.dynamicSpheres.push({
                     position: this.getEditorPos(),
-                    power: [30000, 3000, 30000],
+                    material: new EmissionMaterial([30000, 3000, 30000], 3),
                     radius: 0.1
                 });
                 map.setUniforms(this.programs[0]);
             }
             else {
-                map.staticLights.pop();
+                map.dynamicSpheres.pop();
                 map.setUniforms(this.programs[0]);
             }
             this.editMode = !this.editMode;
@@ -916,7 +973,7 @@ class App {
                 map.dynamicSpheres.push({
                     position: this.cameraPos,
                     radius: 0.05,
-                    material: new Material(0.0, [0.0, 0.0, 0.0], 0.0, [0, 1000, 1000]),
+                    material: new EmissionMaterial([0, 5000, 5000], 3),
                     type: 1,
                     direction: scale(dir, 1.0),
                     speed: 12,
@@ -993,118 +1050,136 @@ class App {
             this.cameraPos[i] += move[i] * delta;
         }
         if(this.editMode) {
-            map.staticLights[map.staticLights.length-1].position = this.getEditorPos();
+            map.dynamicSpheres[map.dynamicSpheres.length-1].position = this.getEditorPos();
         }
         else {
             //gameplay
-            for(let i = 1; i < map.dynamicCubes.length; i++) {
-                if((map.dynamicCubes[i].set === false || map.dynamicCubes[i].set === true && map.dynamicCubes[i].t < 500) && length(sub(this.cameraPos, scale(add(map.dynamicCubes[i].pos1, map.dynamicCubes[i].pos2), 0.5))) < 2) {
-                    if(!map.dynamicCubes[i].set) {
-                        map.dynamicCubes[i].set = true;
-                        map.dynamicCubes[i].t = 0;
-                        this.cubesLit++;
+            if(this.gameON) {
+                //light
+                this.gameTime += timestamp - this.lastTimestamp;
+                let sc = -Math.cos(this.gameTime/1000) * 0.2 + 0.2;
+                map.lightGroups[0] = [sc, sc, sc];
+
+                map.lightGroups[1] = [0, 0, 0];
+                map.lightGroups[2] = [0, 0, 0];
+                if(this.gameTime > 4500) {
+                    let sc2 = (this.gameTime - 4500) / 2000;
+                    if(this.gameTime > 6500) {
+                        sc2 = 1;
                     }
-                    let t = map.dynamicCubes[i].t;
-                    map.dynamicCubes[i].material.emission = [2.0 * t, 0.8 * t, 1.5 * t];
+                    map.lightGroups[2] = [sc2 * 0.5, sc2 * 0.5, sc2 * 0.5];
+                    sc = sc2 * (Math.sin(this.gameTime/1000 + Math.PI * 0.3) * 0.2 + 0.3);
+                    map.lightGroups[1] = [sc, sc, sc];
+                }
 
-                    map.dynamicCubes[i].t += timestamp - this.lastTimestamp;
-                }
-            }
-            if(this.cubesLit == map.dynamicCubes.length - 1) {
-                if(map.dynamicCubes[0].set === true && length(sub(this.cameraPos, scale(add(map.dynamicCubes[0].pos1, map.dynamicCubes[0].pos2), 0.5))) < 2) {
-                    this.resetLevel(true);
-                }
-                let level = 1.0;
-                if(map.dynamicCubes[0].set === false) {
-                    map.dynamicCubes[0].set = true;
-                }
-                if(map.dynamicCubes[0].t < 500) {
-                    level = map.dynamicCubes[0].t / 500;
+                for(let i = 1; i < map.cubes.length; i++) {
+                    if((map.cubes[i].set === false || map.cubes[i].set === true && map.cubes[i].t < 500) && length(sub(this.cameraPos, scale(add(map.cubes[i].pos1, map.cubes[i].pos2), 0.5))) < 2) {
+                        if(!map.cubes[i].set) {
+                            map.cubes[i].set = true;
+                            map.cubes[i].t = 0;
+                            this.cubesLit++;
+                        }
+                        let t = map.cubes[i].t;
+                        map.lightGroups[map.cubes[i].material.lightGroup] = [t/500, t/500, t/500];
 
-                    map.dynamicCubes[0].t += timestamp - this.lastTimestamp;
+                        map.cubes[i].t += timestamp - this.lastTimestamp;
+                    }
                 }
-                map.dynamicCubes[0].material.emission = scale([1000 * Math.sin(timestamp/300 + 200), 1000 * Math.sin(timestamp/400 + 700), 1000 * Math.sin(timestamp/500)], level);
-            }
-            
-            for(let i = 0; i < map.dynamicSpheres.length; i++) 
-            {
-                let sphere = map.dynamicSpheres[i];
-                if(sphere.type == 0) {
-                    if(sphere.mob == 0) {
-                        //mob
-                        if(sphere.t <= 0) {
+                if(this.cubesLit == map.cubes.length - 1) {
+                    if(map.cubes[0].set === true && length(sub(this.cameraPos, scale(add(map.cubes[0].pos1, map.cubes[0].pos2), 0.5))) < 2) {
+                        this.resetLevel(true);
+                    }
+                    let level = 1.0;
+                    if(map.cubes[0].set === false) {
+                        map.cubes[0].set = true;
+                    }
+                    if(map.cubes[0].t < 500) {
+                        level = map.cubes[0].t / 500;
+
+                        map.cubes[0].t += timestamp - this.lastTimestamp;
+                    }
+                    map.lightGroups[map.cubes[0].material.lightGroup] = scale([Math.sin(this.gameTime/300 + 200) * 0.5 + 0.5, Math.sin(this.gameTime/400 + 700) * 0.5 + 0.5, Math.sin(this.gameTime/500) * 0.5 + 0.5], level);
+                }
+                
+                for(let i = 0; i < map.dynamicSpheres.length; i++) 
+                {
+                    let sphere = map.dynamicSpheres[i];
+                    if(sphere.type == 0) {
+                        if(sphere.mob == 0) {
+                            //mob
+                            if(sphere.t <= 0) {
+                                if(length(sub(this.cameraPos, sphere.position)) > sphere.activationRadius || sphere.hp <= 0) {
+                                    continue;
+                                }
+                                if(Math.random() < -sphere.t/200000) {
+                                    sphere.t = 0.1;
+                                }
+                                else {
+                                    sphere.t-= timestamp - this.lastTimestamp;
+                                }
+                            }
+                            if(sphere.t > 0) {
+                                if(sphere.t < 1000) {
+                                    sphere.material.emission = scale([1000, 200, 100], sphere.t/1000);
+                                    sphere.t+= timestamp - this.lastTimestamp;
+                                }
+                                else {
+                                    sphere.material.emission = [0.0, 0.0, 0.0];
+                                    sphere.t = 0;
+                                    //shoot
+                                    let dir = normalize(sub(sphere.position, this.cameraPos));
+                                    map.dynamicSpheres.push({
+                                        position: sphere.position,
+                                        radius: 0.1,
+                                        material: new EmissionMaterial([5000, 0, 0], 3),
+                                        type: 1,
+                                        direction: scale(dir, -1),
+                                        speed: 9,
+                                        t: 0,
+                                        livetime: 5000,
+                                        side: 0
+                                    });
+                                }
+                            }
+                        }
+                        else {
                             if(length(sub(this.cameraPos, sphere.position)) > sphere.activationRadius || sphere.hp <= 0) {
                                 continue;
                             }
-                            if(Math.random() < -sphere.t/200000) {
-                                sphere.t = 0.1;
-                            }
-                            else {
-                                sphere.t-= timestamp - this.lastTimestamp;
-                            }
+                            let dir = scale(normalize(sub(sphere.position, this.cameraPos)), -1);
+                            sphere.position = add(sphere.position, scale(dir, (timestamp - this.lastTimestamp)/1000 * sphere.speed));
                         }
-                        if(sphere.t > 0) {
+                    }
+                    else if(sphere.type == 1) {
+                        //bullet
+                        if(sphere.t < sphere.livetime) {
+                            sphere.t+= timestamp - this.lastTimestamp;
                             if(sphere.t < 1000) {
-                                sphere.material.emission = scale([1000, 200, 100], sphere.t/1000);
-                                sphere.t+= timestamp - this.lastTimestamp;
-                            }
-                            else {
-                                sphere.material.emission = [0.0, 0.0, 0.0];
-                                sphere.t = 0;
-                                //shoot
-                                let dir = normalize(sub(sphere.position, this.cameraPos));
-                                map.dynamicSpheres.push({
-                                    position: sphere.position,
-                                    radius: 0.1,
-                                    material: new Material(0.0, [0.0, 0.0, 0.0], 0.0, [1000, 0, 0]),
-                                    type: 1,
-                                    direction: scale(dir, -1),
-                                    speed: 9,
-                                    t: 0,
-                                    livetime: 5000,
-                                    side: 0
-                                });
-
+                                sphere.position = add(sphere.position, scale(sphere.direction, (timestamp - this.lastTimestamp)/1000 * sphere.speed));
                             }
                         }
-                    }
-                    else {
-                        if(length(sub(this.cameraPos, sphere.position)) > sphere.activationRadius || sphere.hp <= 0) {
-                            continue;
-                        }
-                        let dir = scale(normalize(sub(sphere.position, this.cameraPos)), -1);
-                        sphere.position = add(sphere.position, scale(dir, (timestamp - this.lastTimestamp)/1000 * sphere.speed));
-                    }
-                }
-                else if(sphere.type == 1) {
-                    //bullet
-                    if(sphere.t < sphere.livetime) {
-                        sphere.t+= timestamp - this.lastTimestamp;
-                        if(sphere.t < 1000) {
-                            sphere.position = add(sphere.position, scale(sphere.direction, (timestamp - this.lastTimestamp)/1000 * sphere.speed));
-                        }
-                    }
-                    if(sphere.side == 1) {
-                        //check collision 
-                        for(let j = 0; j < map.dynamicSpheres.length; j++) {
-                            let sphere2 = map.dynamicSpheres[j];
-                            if(sphere2.type != 1 && length(sub(sphere.position, sphere2.position)) < sphere.radius + sphere2.radius){
-                                sphere.t = sphere.livetime;
-                                sphere2.hp--;
-                                if(sphere2.hp <= 0) {
-                                    sphere2.material.albedo = [0.3, 0.0, 0.0];
+                        if(sphere.side == 1) {
+                            //check collision 
+                            for(let j = 0; j < map.dynamicSpheres.length; j++) {
+                                let sphere2 = map.dynamicSpheres[j];
+                                if(sphere2.type != 1 && length(sub(sphere.position, sphere2.position)) < sphere.radius + sphere2.radius){
+                                    sphere.t = sphere.livetime;
+                                    sphere2.hp--;
+                                    if(sphere2.hp <= 0) {
+                                        sphere2.material.albedo = [0.3, 0.0, 0.0];
+                                    }
                                 }
                             }
                         }
                     }
-                }
-                if(sphere.type == 1 && sphere.side == 0 || sphere.type == 0 && sphere.mob == 1) {
-                    //check collision with player
-                    if(length(sub(sphere.position, this.cameraPos)) < sphere.radius + 0.5) {
-                        sphere.t = sphere.livetime;
-                        this.hp--;
-                        if(this.hp <= 0)
-                            this.resetLevel(false);
+                    if(sphere.type == 1 && sphere.side == 0 || sphere.type == 0 && sphere.mob == 1) {
+                        //check collision with player
+                        if(length(sub(sphere.position, this.cameraPos)) < sphere.radius + 0.5) {
+                            sphere.t = sphere.livetime;
+                            this.hp--;
+                            if(this.hp <= 0)
+                                this.resetLevel(false);
+                        }
                     }
                 }
             }
@@ -1114,7 +1189,10 @@ class App {
         map.setUniforms(this.programs[0]);
         map.updateBlocks(this.programs[0]);
 
-        
+        if(this.pendingSwitchLightGroup && this.currentProgram == 1) {
+            this.programs[1].switchLightGroup();
+            this.pendingSwitchLightGroup = false;
+        }
 
         //draw
         let program = this.programs[this.currentProgram];

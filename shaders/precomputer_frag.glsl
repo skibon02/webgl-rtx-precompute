@@ -420,7 +420,12 @@ void main() {
         ray.origin.y += texPix.y;
     }
     next_block_pos += ivec3(ray.dir);
-    int blockMaterial = texelFetch(u_blocksData, next_block_pos, 0).r;
+    int blockMaterial;
+    if(next_block_pos.x < 0 || next_block_pos.y < 0 || next_block_pos.z < 0 || next_block_pos.x >= u_sceneSize.x || next_block_pos.y >= u_sceneSize.y || next_block_pos.z >= u_sceneSize.z) {
+        blockMaterial = -1;
+    }
+    else
+        blockMaterial = texelFetch(u_blocksData, next_block_pos, 0).r;
 
     // outColor = vec4(vec3(float(side) + 3.0) / 7.0, 1.0); //visualize side
     // return;
@@ -439,7 +444,7 @@ void main() {
     for(int i = 0; i < samples_n; i++) {
         float scale = 1.0;
         ray.dir = cosineWeightedDirection(cur_seed + texCoord.x * 0.3 + texCoord.y * 3.3, norm);
-        if(u_materials[blockMaterial].isGlass) {
+        if(blockMaterial != -1 && u_materials[blockMaterial].isGlass) {
             //apply refraction 1.5
             float n = 1.5;
             float R0 = (1.0 - n) / (1.0 + n);

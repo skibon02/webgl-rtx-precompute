@@ -57,6 +57,14 @@ struct SolidLight {
     int lightGroup;
 };
 
+struct Particle{
+    vec3 position;
+    float radius;
+    vec3 color;
+};
+
+uniform int u_editorMaterial;
+
 //static scene: spheres, solidLights
 uniform int u_numSpheres;
 uniform Sphere u_spheres[10];
@@ -73,6 +81,9 @@ uniform Sphere u_dynamicSpheres[30];
 
 uniform int u_numFakePointLights;
 uniform PointLight u_fakePointLights[10];
+
+uniform int u_numParticles;
+uniform Particle u_particles[200];
 //      DATA SECTION END
 
 
@@ -350,6 +361,31 @@ Intersection intersectBlocks(Ray ray) {
     return res;
 }
 
+Intersection intersectParticle(Ray ray, Particle particle) {
+    //intersect flat square with center in particle.position and length particle.radius
+    Intersection res;
+    res.distance = -1.0;
+    vec3 r_pos = ray.origin;
+    vec3 r_dir = ray.dir;
+    vec3 squareCenter = particle.position;
+    float squareLength = particle.radius;
+    vec3 squareNormal = normalize(particle.position - ray.origin);
+
+    float t = dot(squareCenter - r_pos, squareNormal) / dot(r_dir, squareNormal);
+    if (t > eps) {
+        vec3 p = r_pos + r_dir * t;
+        vec3 d = p - squareCenter;
+        if (abs(d.x) < squareLength && abs(d.y) < squareLength && abs(d.z) < squareLength) {
+            res.distance = t;
+            res.position = p;
+            res.normal = squareNormal;
+            res.material.emission = particle.color;
+            res.material.lightGroup = 3;
+        }
+    }
+    return res;
+}
+
 Intersection intersect(Ray ray) {
     Intersection intersection;
     intersection.distance = -1.0;
@@ -402,6 +438,15 @@ Intersection intersect(Ray ray) {
             intersection = res;
             intersection.luminosity = vec3(-1.0);
             intersection.objectUID = 10000 * (i+1);
+        }
+    }
+    for(int i = 0; i < u_numParticles; i++) {
+        Particle particle = u_particles[i];
+        Intersection res = intersectParticle(ray, particle);
+        if (res.distance > eps && (intersection.distance < 0.0 || res.distance < intersection.distance)) {
+            intersection = res;
+            intersection.luminosity = vec3(-1.0);
+            intersection.objectUID = 1000000 * (i+1);
         }
     }
 
@@ -616,13 +661,39 @@ void main() {
     }
     //get vector from angles
     
+    float glassScale = 1.0;
+    if(u_editorMaterial != -1 && pos.x > 0.6 && pos.y < -0.6) {
+        vec2 mypos = vec2((pos.x-1.0) * 5.0 + 1.0, (pos.y+1.0) * 5.0 - 1.0);
+        vec3 cameraVec = normalize(vec3(0.5, -0.5, 0.5));
+        vec3 top = vec3(0.0, 1.0, 0.0);
+        vec3 right = normalize(cross(cameraVec, top));
+        top = normalize(cross(right, cameraVec));
+        ray.dir = normalize(cameraVec + right * (mypos.x * u_resolution.x / u_resolution.y) * fovscale + top * (mypos.y) * fovscale);
+        ray.origin = vec3(-3, 3, 0);
+        Material mat = u_materials[u_editorMaterial];
+        Intersection res = intersectCube(ray, Cube(vec3(1, -1, 2), vec3(-1, 1, 4), mat));
+        if(res.distance != -1.0) {
+            if(!mat.isGlass) {
+                vec3 lightpos = vec3(-1.5, 0.8, 0.0) + ray.origin;
+                float dist = length(lightpos - res.position);
+                vec3 col = mat.emission + 6000.0 * mat.albedo * mat.albedoFactor * dot(res.normal, normalize(lightpos - res.position)) / (dist * dist);
+                col *= finalLumScale;
+                //gamma correction
+                col = pow(col, vec3(1.0 / 2.2));
+                outColor = vec4(col, 1.0);
+                return;
+            }
+            else {
+                glassScale = mat.albedoFactor * 0.3;
+            }
+        }
+    }
     vec3 top = vec3(0.0, 1.0, 0.0);
     vec3 right = normalize(cross(u_cameraVec, top));
     top = normalize(cross(right, u_cameraVec));
     ray.dir = normalize(u_cameraVec + right * (pos.x * u_resolution.x / u_resolution.y) * fovscale + top * (pos.y) * fovscale);
 
     //ray.dir = vec3(0.0, 0.0, -1.0) + vec3(pos.x*(u_resolution.x / u_resolution.y), pos.y, 0.0) * fovscale;
-    ray.dir = normalize(ray.dir);
     ray.origin = u_cameraPos;
     vec3 col = vec3(0.0);
     int samples_n = 1;
@@ -633,7 +704,7 @@ void main() {
             samples_n= 1;
     }
     col /= float(samples_n);
-    col *=  finalLumScale;
+    col *=  finalLumScale * glassScale;
     //gamma correction
     col = pow(col, vec3(1.0 / 2.2));
     if(wrongTrigger)

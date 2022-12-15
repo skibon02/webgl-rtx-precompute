@@ -181,6 +181,8 @@ let defaultMap = {
             t: 0.0
         },
     ],
+    particles: [
+    ],
     lightGroups: [
         [1.0, 1.0, 1.0],
         [0, 0, 0],
@@ -257,7 +259,12 @@ class Map {
                 gl.uniform1f(prog.u_("dynamicSpheres[" + i + "].radius"), this.dynamicSpheres[i].radius);
                 this.setMaterialUniform(prog, "dynamicSpheres[" + i + "].material", this.dynamicSpheres[i].material);
             }
-            
+            gl.uniform1i(prog.u_("numParticles"), this.particles.length);
+            for(let i = 0; i < this.particles.length; i++) {
+                gl.uniform3fv(prog.u_("particles[" + i + "].position"), this.particles[i].position);
+                gl.uniform1f(prog.u_("particles[" + i + "].radius"), this.particles[i].radius);
+                gl.uniform3fv(prog.u_("particles[" + i + "].color"), this.particles[i].color);
+            }
         }
         gl.uniform1i(prog.u_("numCubes"), this.cubes.length);
         for(let i = 0; i < this.cubes.length; i++) {
@@ -487,6 +494,7 @@ class RTR extends Prog {
 
         //local:
         gl.uniform1i(this.u_("precompMappingData"), 2);
+        gl.uniform1i(this.u_("editorMaterial"), -1);
 
         //set scene data
         gl.uniform1i(this.u_("precompUsed"), 0);
@@ -527,7 +535,7 @@ class Precomputer extends Prog {
         this.samplesLength = 64;
         this.samplesPacked = new Array(8000);
         this.presentProg = new Prog("present");
-        this.frames = 0;
+        this.frames = [];
 
         this.curLightGroup = 0;
         this.lightGroups = lightGroups;
@@ -628,7 +636,9 @@ class Precomputer extends Prog {
 
         //local resources:
         gl.uniform1i(this.u_("packedDataTex"), 1);
-        
+        for(let i = 0; i < this.lightGroups; i++) {
+            this.frames[i] = 0;
+        }
 
         // INIT PRESENT SUBPROGRAM
         await this.presentProg.initProgram();
@@ -669,7 +679,7 @@ class Precomputer extends Prog {
         gl.uniform3f(this.u_("cameraVec"), cameraVec[0], cameraVec[1], cameraVec[2]);
     }
     postDraw() {
-        this.frames++;
+        this.frames[this.curLightGroup]++;
         gl.bindFramebuffer(gl.FRAMEBUFFER, null);
         gl.viewport(0, 0, gl.canvas.width, gl.canvas.height);
 
@@ -696,7 +706,7 @@ class App {
         this.camera = [0, 0];
         this.move = [0, 0, 0];
         this.gameTime = 0;
-        this.gameON = false;
+        this.gameON = true; 
 
         this.editMode = false;
         this.editorLength = 2;
@@ -712,6 +722,7 @@ class App {
         this.initGraphics();
     }
     async initGraphics() {
+        this.updateStatusText();
 
         //BIND HANDLERS
         let canvas = document.querySelector("#c");
@@ -790,6 +801,21 @@ class App {
         this.resizeCanvasToDisplaySize([{target: gl.canvas}]);
         //start rendering cycle
         window.requestAnimationFrame(this.draw.bind(this));
+    }
+
+    updateStatusText() {
+        if(this.currentProgram == 0) {
+            document.body.style.color = "rgb(178, 219, 247)";
+            document.querySelector(".hp").innerHTML = "HP: " + this.hp;
+            document.querySelector(".cubesLit").innerHTML = "Cubes lit: " + this.cubesLit + "/" + (map.cubes.length - 1);
+            document.querySelector(".mode").innerHTML = (this.editMode ? "[EDIT MODE]" : "Normal mode") + (this.gameON? "" : " (PAUSED)");
+        }
+        else {
+            document.body.style.color = "black";
+            document.querySelector(".hp").innerHTML = "Current lightgroup: " + (this.programs[1].curLightGroup + 1) + "/" + this.lightGroups;
+            document.querySelector(".cubesLit").innerHTML = "Samples: " + this.programs[1].frames[this.programs[1].curLightGroup] * 4;
+            document.querySelector(".mode").innerHTML = "Baking...";
+        }
     }
     scroll(e) {
         if(this.editMode) {
@@ -895,8 +921,8 @@ class App {
         }
         if(e.key == "1") {
             if(this.currentProgram != 0) {
-                console.log('total frames: ' + this.programs[1].frames);
-                this.programs[1].frames = 0;
+                // console.log('total frames: ' + this.programs[1].frames);
+                // this.programs[1].frames = 0;
             }
             this.currentProgram = 0;
         }
@@ -916,17 +942,18 @@ class App {
         }
         if(e.key == "k") {
             if(!this.editMode) {
-                this.programs[0].rtxOFF();
-                debugger;
+                gl.uniform1i(this.programs[0].u_("editorMaterial"), this.editorMaterial);
+                // this.programs[0].rtxOFF();
                 //add small sphere to the cursor
                 map.dynamicSpheres.push({
                     position: this.getEditorPos(),
-                    material: new EmissionMaterial([30000, 3000, 30000], 3),
+                    material: new EmissionMaterial([10000, 1000, 10000], 3),
                     radius: 0.1
                 });
                 map.setUniforms(this.programs[0]);
             }
             else {
+                gl.uniform1i(this.programs[0].u_("editorMaterial"), -1);
                 map.dynamicSpheres.pop();
                 map.setUniforms(this.programs[0]);
             }
@@ -935,10 +962,17 @@ class App {
         if(e.key == "=") {
             this.editorMaterial++;
             this.editorMaterial = Math.min(this.editorMaterial, map.materials.length - 1);
+            gl.uniform1i(this.programs[0].u_("editorMaterial"), this.editorMaterial);
         }
         if(e.key == "-") {
             this.editorMaterial--;
             this.editorMaterial = Math.max(this.editorMaterial, 0);
+            gl.uniform1i(this.programs[0].u_("editorMaterial"), this.editorMaterial);
+        }
+        if(e.key == 'j') {
+            if(!this.editMode) {
+                this.gameON = !this.gameON;
+            }
         }
     }
 
@@ -1028,10 +1062,9 @@ class App {
     }
     resetLevel(res) {
         alert(res ? 'You win!' : 'You lose!');
-        this.stopped = true;
+        this.gameOn = false;
     }
     draw(timestamp) {  
-        
         if(this.stopped) {
             window.requestAnimationFrame(this.draw.bind(this));
             return;
@@ -1153,8 +1186,25 @@ class App {
                     else if(sphere.type == 1) {
                         //bullet
                         if(sphere.t < sphere.livetime) {
+                            if(sphere.t > 100) {
+                                //gen particles trail
+                                let spawnrate = 30;
+                                if(Math.floor(sphere.t / spawnrate) != Math.floor((sphere.t + timestamp - this.lastTimestamp) / spawnrate)) {
+                                    debugger;
+                                    let sizeFactor = Math.random() * 0.01 + 0.005;
+                                    map.particles.push({
+                                        position: add(sphere.position, scale([Math.random(), Math.random(), Math.random()], 0.05)),
+                                        color: scale(sphere.material.emission, (Math.random() * 0.4 + 0.6)),
+                                        refRadius: sizeFactor,
+                                        radius: sizeFactor,
+                                        t: 0,
+                                        lifetime:(20 - sizeFactor * 1000) * 100
+                                    })
+                                }
+                            }
                             sphere.t+= timestamp - this.lastTimestamp;
                             if(sphere.t < 1000) {
+                                //moving forward 1 second
                                 sphere.position = add(sphere.position, scale(sphere.direction, (timestamp - this.lastTimestamp)/1000 * sphere.speed));
                             }
                         }
@@ -1182,6 +1232,17 @@ class App {
                         }
                     }
                 }
+                for(let i = 0; i < map.particles.length; i++) {
+                    let particle = map.particles[i];
+                    if(particle.t > particle.lifetime) {
+                        map.particles.splice(i, 1);
+                        i--;
+                    }
+                    else {
+                        particle.t += timestamp - this.lastTimestamp;
+                        particle.radius = particle.refRadius * Math.sin(Math.PI/2 * 0.4 + particle.t / 700);
+                    }
+                }
             }
 
         }
@@ -1193,6 +1254,7 @@ class App {
             this.programs[1].switchLightGroup();
             this.pendingSwitchLightGroup = false;
         }
+        this.updateStatusText();
 
         //draw
         let program = this.programs[this.currentProgram];

@@ -83,7 +83,9 @@ uniform int u_numFakePointLights;
 uniform PointLight u_fakePointLights[10];
 
 uniform int u_numParticles;
-uniform Particle u_particles[200];
+uniform Particle u_particles[110];
+
+bool u_enableDynamicLights = false;
 //      DATA SECTION END
 
 
@@ -523,8 +525,7 @@ vec3 addDirectLight(Intersection intersection, bool onlyDynamic) {
                 color += emission * lightIntensity * max(0.0, dot(intersection.normal, lightDir));
             }
         }
-    bool enableDynamicLight = false;
-    if(enableDynamicLight)
+    if(u_enableDynamicLights)
         for (int i = 0; i < u_numDynamicSpheres; i++) {
             Sphere sphere = u_dynamicSpheres[i];
             if(dot(sphere.material.emission, vec3(1.0, 1.0, 1.0)) == 0.0)
@@ -559,7 +560,7 @@ vec3 addDirectLight(Intersection intersection, bool onlyDynamic) {
 }
 
 const float finalLumScale = 0.0008;
-const int MAX_BOUNCES = 6;
+const int MAX_BOUNCES = 4;
 bool hitGlass = false;
 int decision = 0;
 vec3 pathTrace(Ray ray) {
@@ -624,16 +625,22 @@ vec3 pathTrace(Ray ray) {
             float diffuseFactor = 1.0 - intersection.material.reflectivity;
             float reflectFactor = intersection.material.reflectivity;
             //diffuse
-
             if(u_precompUsed == 1 && intersection.luminosity.x != -1.0 && intersection.objectUID == -1) {
                 // for static precomputed objects
-                float shadowScale = 1.0 - isInDynamicShadow(intersection) * 0.8;
-                vec3 directLight = addDirectLight( intersection, true);
-                resColor += (intersection.luminosity / finalLumScale + directLight) * diffuseFactor * intersection.material.albedo * intersection.material.albedoFactor * throughput / PI * shadowScale;
+                if(!u_enableDynamicLights) {
+                    resColor += (intersection.luminosity / finalLumScale) * diffuseFactor * intersection.material.albedo * intersection.material.albedoFactor * throughput / PI;
+                }
+                else {
+                    float shadowScale = 1.0 - isInDynamicShadow(intersection) * 0.8;
+                    vec3 directLight = addDirectLight( intersection, true);
+                    resColor += (intersection.luminosity / finalLumScale + directLight) * diffuseFactor * intersection.material.albedo * intersection.material.albedoFactor * throughput / PI * shadowScale;
+                }
             }
             else {
                 //for dynamic objects
-                float shadowScale = 1.0 - isInDynamicShadow(intersection) * 0.8;
+                float shadowScale = 1.0;
+                if(u_enableDynamicLights)
+                    shadowScale = 1.0 - isInDynamicShadow(intersection) * 0.8;
                 vec3 directLight = addDirectLight( intersection, false);
                 resColor += directLight * intersection.material.albedo * intersection.material.albedoFactor * throughput * diffuseFactor / PI * shadowScale;
             }

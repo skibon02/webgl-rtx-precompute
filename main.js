@@ -57,6 +57,23 @@ var saveByteArray = (function () {
     };
 }());
 
+localStorage.setItem("leaderBoard", localStorage.getItem("leaderBoard") || '[]');
+let leaderboard = JSON.parse(localStorage.getItem("leaderBoard"));
+
+function genLeaderboard() {
+    if(leaderboard.length == 0) {
+         document.querySelector(".leaderboard-content").innerHTML = "No scores yet!";
+         return;
+    }
+    document.querySelector(".leaderboard-content").innerHTML = leaderboard.map((score, index) => `
+    <div class="leaderboard-item">
+         <div class="leaderboard-item__rank">${index + 1}</div>
+         <div class="leaderboard-item__name">${score.name}</div>
+         <div class="leaderboard-item__score">${score.score} secs</div>
+    </div>
+    `).join("");
+}
+genLeaderboard();
 
 class Material {
     constructor(albedoFactor = 0.8, albedo = [1.0, 1.0, 1.0], reflectivity = 0.0, emission = [0.0, 0.0, 0.0], isGlass = false, lightGroup=0) {
@@ -134,6 +151,7 @@ let defaultMap = {
             t: 0.0,
             activationRadius: 5.0,
             hp: 10,
+            damage: 5,
             mob: 1, //0 - shootinng mob, 1 - moving mob
             type: 0, //0 - mob, 1 - projectile
             speed: 3,
@@ -182,6 +200,12 @@ let defaultMap = {
         },
     ],
     particles: [
+        {
+            position: [10, 1.8, 1.3],
+            radius: 0.5,
+            type: "item",
+            color: [2000.0, 1000.0, 6000.0],
+        }
     ],
     lightGroups: [
         [1.0, 1.0, 1.0],
@@ -193,7 +217,12 @@ let defaultMap = {
         [0, 0, 0],
         [0, 0, 0],
     ],
-    name: "map1"
+    name: "map1",
+    
+    "shootPlayerSound": "shot1.mp3",
+    "shootEnemySound": "shot2.mp3",
+    "bgSound": "bg1.mp3",
+    "itemSound": "item.mp3",
 }
 defaultMap.blocks = new Array(defaultMap.blocks_dims[0] * defaultMap.blocks_dims[1] * defaultMap.blocks_dims[2])
 defaultMap.blocks.fill(-1);
@@ -216,6 +245,7 @@ class Map {
                 }
             }
         }
+        this.blocks[vec3ToLin([1,1,1], this.blocks_dims)] = 0;
     }
     importMap(map) {
         for(let key in map) {
@@ -314,6 +344,24 @@ class Map {
 }
 
 let map = new Map();
+
+let soundManager = {
+    sounds: {
+        'shoot1': [new Audio('sounds/' + map.shootPlayerSound)],
+        'shoot2': [new Audio('sounds/' + map.shootEnemySound)],
+        'bg': [new Audio('sounds/' + map.bgSound)],
+        'item': [new Audio('sounds/' + map.itemSound)],
+    },
+    soundIndex: 0,
+    playsound(sound) {
+        if(this.sounds[sound].length < 5) {
+            this.sounds[sound].push(this.sounds[sound][0].cloneNode());
+        }
+        this.sounds[sound][this.soundIndex % this.sounds[sound].length].play();
+        this.soundIndex++;
+    }
+}
+soundManager.sounds['bg'][0].volume = 0.3;
 
 let sharedResources = {};
 
@@ -700,7 +748,7 @@ class App {
         this.programs = [];
         this.currentProgram = 0;
 
-        this.cameraPos = [5.5, 1.5, 2.5];
+        this.cameraPos = [5.5, 4.0, 2.5];
         this.cameraVec = [1, 0, 0];
         //angle of camera
         this.camera = [0, 0];
@@ -716,8 +764,13 @@ class App {
         this.hp = 5;
         this.moveSpeed = 3;
         this.rotateSenstivity = 0.001;
+        this.onGround = false;
+        this.yvel = 0;
+        this.infJumps = false;
 
         this.lightGroups = 8;
+
+        this.bonuses = [];
 
         this.initGraphics();
     }
@@ -801,21 +854,26 @@ class App {
         this.resizeCanvasToDisplaySize([{target: gl.canvas}]);
         //start rendering cycle
         window.requestAnimationFrame(this.draw.bind(this));
+        
+        soundManager.playsound("bg");
     }
 
     updateStatusText() {
-        if(this.currentProgram == 0) {
-            document.body.style.color = "rgb(178, 219, 247)";
-            document.querySelector(".hp").innerHTML = "HP: " + this.hp;
-            document.querySelector(".cubesLit").innerHTML = "Cubes lit: " + this.cubesLit + "/" + (map.cubes.length - 1);
-            document.querySelector(".mode").innerHTML = (this.editMode ? "[EDIT MODE]" : "Normal mode") + (this.gameON? "" : " (PAUSED)");
-        }
-        else {
-            document.body.style.color = "black";
-            document.querySelector(".hp").innerHTML = "Current lightgroup: " + (this.programs[1].curLightGroup + 1) + "/" + this.lightGroups;
-            document.querySelector(".cubesLit").innerHTML = "Samples: " + this.programs[1].frames[this.programs[1].curLightGroup] * 4;
-            document.querySelector(".mode").innerHTML = "Baking...";
-        }
+        (async()=> {
+            if(this.currentProgram == 0) {
+                document.body.style.color = "rgb(178, 219, 247)";
+                document.querySelector(".details").innerHTML = "HP: " + this.hp + "<br>"
+                + "Cubes lit: " + this.cubesLit + "/" + (map.cubes.length - 1) + "<br>"
+                + "Active bonuses: <br>" + this.bonuses.join("<br>");
+                document.querySelector(".mode").innerHTML = (this.editMode ? "[EDIT MODE]" : "Normal mode") + (this.gameON? "" : " (PAUSED)");
+            }
+            else {
+                document.body.style.color = "black";
+                document.querySelector(".hp").innerHTML = "Current lightgroup: " + (this.programs[1].curLightGroup + 1) + "/" + this.lightGroups;
+                document.querySelector(".cubesLit").innerHTML = "Samples: " + this.programs[1].frames[this.programs[1].curLightGroup] * 4;
+                document.querySelector(".mode").innerHTML = "Baking...";
+            }
+        }).bind(this)();
     }
     scroll(e) {
         if(this.editMode) {
@@ -836,7 +894,21 @@ class App {
                 let data = e.target.result;
                 
                 let loadedMap = JSON.parse(data);
+                //stop bg sound
+                for(let i = 0; i < soundManager.sounds['bg'].length; i++) {
+                    soundManager.sounds['bg'][i].pause();
+                }
+
                 map.importMap(loadedMap);
+                soundManager.sounds = 
+                {'shoot1': [new Audio('sounds/' + map.shootPlayerSound)],
+                'shoot2': [new Audio('sounds/' + map.shootEnemySound)],
+                'bg': [new Audio('sounds/' + map.bgSound)],
+                'item': [new Audio('sounds/' + map.itemSound)],}
+                soundManager.soundIndex = 0;
+                soundManager.sounds['bg'][0].volume = 0.1;
+                soundManager.playsound("bg");
+                
                 map.setUniforms(this.programs[0], false);
                 map.setUniforms(this.programs[1], true);
                 map.blocksDirty = true;
@@ -856,43 +928,63 @@ class App {
     keyup(e){
         if(e.repeat) return;
         if(e.key == "d"){
-            this.move[0] = 0;
+            this.move[0]--;
+            if(this.move[0] < -1) this.move[0] = -1;
         }
         if(e.key == "a"){
-            this.move[0] = 0;
+            this.move[0]++;
+            if(this.move[0] > 1) this.move[0] = 1;
         }
         if(e.key == "w"){
-            this.move[2] = 0;
+            this.move[2]++;
+            if(this.move[2] > 1) this.move[2] = 1;
         }
         if(e.key == "s"){
-            this.move[2] = 0;
+            this.move[2]--;
+            if(this.move[2] < -1) this.move[2] = -1;
         }
-        if(e.key == " "){
-            this.move[1] = 0;
-        }
-        if(e.key == "Shift"){
-            this.move[1] = 0;
+        if(this.editMode) {
+            if(e.key == " "){
+                this.move[1] = 0;
+            }
+            if(e.key == "Shift"){
+                this.move[1] = 0;
+            }
         }
     }
     keydown(e){
         if(e.repeat) return;
         if(e.key == "d"){
-            this.move[0] = 1;
+            this.move[0]++;
+            if(this.move[0] > 1) this.move[0] = 1;
         }
         if(e.key == "a"){
-            this.move[0] = -1;
+            this.move[0]--;
+            if(this.move[0] < -1) this.move[0] = -1;
         }
         if(e.key == "w"){
-            this.move[2] = -1;
+            this.move[2]--;
+            if(this.move[2] < -1) this.move[2] = -1;
         }
         if(e.key == "s"){
-            this.move[2] = 1;
+            this.move[2]++;
+            if(this.move[2] > 1) this.move[2] = 1;
         }
-        if(e.key == " "){
-            this.move[1] = 1;
+        if(this.editMode) {
+            if(e.key == " "){
+                this.move[1] = 1;
+            }
+            if(e.key == "Shift"){
+                this.move[1] = -1;
+            }
         }
-        if(e.key == "Shift"){
-            this.move[1] = -1;
+        else {
+            if(e.key == ' ') {
+                if(this.infJumps  || this.onGround) {
+                    this.yvel = 7;
+                    this.onGround = false;
+                }
+            }
         }
         if(e.key == "p") {
             if(this.currentProgram == 1) {
@@ -917,14 +1009,8 @@ class App {
             a.download = "map.json";
             a.href = url;
             a.click();
-
-        }
-        if(e.key == "1") {
-            if(this.currentProgram != 0) {
-                // console.log('total frames: ' + this.programs[1].frames);
-                // this.programs[1].frames = 0;
-            }
             this.currentProgram = 0;
+
         }
         if(e.key == "2") {
             if(this.currentProgram == 1) {
@@ -1015,6 +1101,7 @@ class App {
                     livetime: 1000,
                     side: 1
                 });
+                soundManager.playsound("shoot1");
             }
         }
     }
@@ -1061,8 +1148,31 @@ class App {
         return add(this.cameraPos, scale(this.cameraVec, this.editorLength));
     }
     resetLevel(res) {
-        alert(res ? 'You win!' : 'You lose!');
-        this.gameOn = false;
+        alert(res ? 'Level was completed!' : 'You lose!');
+        this.gameON = false;
+        if(res) {
+            leaderboard.push({name: "SkyGrel19", score: Math.floor(this.gameTime/10)/100});
+            leaderboard.sort((a, b) => a.score - b.score);
+            localStorage.setItem("leaderBoard", JSON.stringify(leaderboard));
+            console.log(leaderboard);
+            genLeaderboard();
+        }
+    }
+    checkCollision(pos) {
+        //check collision with blocks
+        let blockpos = [Math.floor(pos[0]), Math.floor(pos[1]), Math.floor(pos[2])];
+        if(blockpos[0] < 0 || blockpos[0] >= map.blocks_dims[0] ||
+            blockpos[1] < 0 || blockpos[1] >= map.blocks_dims[1] ||
+            blockpos[2] < 0 || blockpos[2] >= map.blocks_dims[2])
+            return false;
+        else {
+            let block = map.blocks[blockpos[0] + blockpos[1] * map.blocks_dims[0] + blockpos[2] * map.blocks_dims[0] * map.blocks_dims[1]];
+            if(block == -1)
+                return false;
+            else {
+                return true;
+            }
+        }
     }
     draw(timestamp) {  
         if(this.stopped) {
@@ -1073,15 +1183,84 @@ class App {
             this.lastTimestamp = timestamp;
 
         //update
-        let delta = (timestamp - this.lastTimestamp) / 1000 * this.moveSpeed;
+        let delta = (timestamp - this.lastTimestamp);
+        if(delta > 100)
+            delta = 100;
+
+
+        //update movement section
         let top = [0.0, 1.0, 0.0];
         let right = normalize(cross(this.cameraVec, top));
         let forward = normalize(cross(right, top));
         let move = [0, 0, 0];
         for(let i = 0; i < 3; i++) {
             move[i] = this.move[0] * right[i] + this.move[1] * top[i] + this.move[2] * forward[i];
-            this.cameraPos[i] += move[i] * delta;
         }
+        let newPos = add(scale(move, delta / 1000 * this.moveSpeed), this.cameraPos);
+        newPos[1] += this.yvel * delta / 1000;
+        if(this.editMode) {
+            this.cameraPos = newPos;
+            this.yvel = 0;
+        }
+        else {
+            let newPosBot = sub(newPos, [0, 1.8, 0]);
+            let newPosBot2 = sub(newPos, [0, 0.00001 + 1.8 + this.yvel * delta / 1000, 0]);
+            let prevPosBot = sub(this.cameraPos, [0, 1.8, 0]);
+    
+            let isBotColliding = this.checkCollision(newPosBot);
+            let isBot2Colliding = this.checkCollision(newPosBot2);
+            let isTopColliding = this.checkCollision(newPos);
+            if(!isBotColliding && !isTopColliding) {
+                this.cameraPos = newPos;
+            }
+            else {
+                let prevBlockPos = [Math.floor(this.cameraPos[0]), Math.floor(this.cameraPos[1]), Math.floor(this.cameraPos[2])];
+                let blockPos = [Math.floor(newPos[0]), Math.floor(newPos[1]), Math.floor(newPos[2])];
+                let collisionNormal = sub(prevBlockPos, blockPos);
+                if(!isTopColliding) 
+                {
+                    collisionNormal = [0, 0, 0];
+                }
+    
+                let bot_prevBlockPos = [Math.floor(prevPosBot[0]), Math.floor(prevPosBot[1]), Math.floor(prevPosBot[2])];
+                let bot_blockPos = [Math.floor(newPosBot[0]), Math.floor(newPosBot[1]), Math.floor(newPosBot[2])];
+                let bot_collisionNormal = sub(bot_prevBlockPos, bot_blockPos);
+                if(!isBotColliding) 
+                {
+                    bot_collisionNormal = [0, 0, 0];
+                }
+    
+                //on collision
+                this.onGround = true;
+                if(collisionNormal[1] == 1)
+                    newPos[1] -= this.yvel * delta / 1000;
+                this.yvel = 0;
+                for(let i = 0; i < 3; i++) {
+                    if(collisionNormal[i] == 0 && bot_collisionNormal[i] == 0) {
+                        this.cameraPos[i] = newPos[i];
+                    }
+                    else {
+                        if(isBotColliding) {
+                            if(i != 1 && !isBot2Colliding) {
+                                debugger;
+                                this.cameraPos[i] = newPos[i];
+                            }
+                            else {
+                                this.cameraPos[i] = bot_blockPos[i] + (bot_collisionNormal[i] > 0 ? 1 : 0) + ( i == 1 ? 1.8 : 0);
+                                this.cameraPos[i] += (bot_collisionNormal[i] > 0 ? 0.0001 : -0.0001);
+                            }
+                        }
+                        else {
+                            this.cameraPos[i] = blockPos[i] + (collisionNormal[i] > 0 ? 1 : 0);
+                            this.cameraPos[i] += (collisionNormal[i] > 0 ? 0.0001 : -0.0001);
+                        }
+                    }
+                }
+            }
+            this.yvel -= 20 * delta / 1000;
+        }
+        //end update movement section
+
         if(this.editMode) {
             map.dynamicSpheres[map.dynamicSpheres.length-1].position = this.getEditorPos();
         }
@@ -1089,7 +1268,7 @@ class App {
             //gameplay
             if(this.gameON) {
                 //light
-                this.gameTime += timestamp - this.lastTimestamp;
+                this.gameTime += delta;
                 let sc = -Math.cos(this.gameTime/1000) * 0.2 + 0.2;
                 map.lightGroups[0] = [sc, sc, sc];
 
@@ -1115,7 +1294,7 @@ class App {
                         let t = map.cubes[i].t;
                         map.lightGroups[map.cubes[i].material.lightGroup] = [t/500, t/500, t/500];
 
-                        map.cubes[i].t += timestamp - this.lastTimestamp;
+                        map.cubes[i].t += delta;
                     }
                 }
                 if(this.cubesLit == map.cubes.length - 1) {
@@ -1129,17 +1308,19 @@ class App {
                     if(map.cubes[0].t < 500) {
                         level = map.cubes[0].t / 500;
 
-                        map.cubes[0].t += timestamp - this.lastTimestamp;
+                        map.cubes[0].t += delta;
                     }
                     map.lightGroups[map.cubes[0].material.lightGroup] = scale([Math.sin(this.gameTime/300 + 200) * 0.5 + 0.5, Math.sin(this.gameTime/400 + 700) * 0.5 + 0.5, Math.sin(this.gameTime/500) * 0.5 + 0.5], level);
                 }
+                
                 
                 for(let i = 0; i < map.dynamicSpheres.length; i++) 
                 {
                     let sphere = map.dynamicSpheres[i];
                     if(sphere.type == 0) {
+                        //mob
                         if(sphere.mob == 0) {
-                            //mob
+                            //turret
                             if(sphere.t <= 0) {
                                 if(length(sub(this.cameraPos, sphere.position)) > sphere.activationRadius || sphere.hp <= 0) {
                                     continue;
@@ -1148,13 +1329,13 @@ class App {
                                     sphere.t = 0.1;
                                 }
                                 else {
-                                    sphere.t-= timestamp - this.lastTimestamp;
+                                    sphere.t-= delta;
                                 }
                             }
                             if(sphere.t > 0) {
                                 if(sphere.t < 1000) {
                                     sphere.material.emission = scale([1000, 200, 100], sphere.t/1000);
-                                    sphere.t+= timestamp - this.lastTimestamp;
+                                    sphere.t+= delta;
                                 }
                                 else {
                                     sphere.material.emission = [0.0, 0.0, 0.0];
@@ -1170,17 +1351,28 @@ class App {
                                         speed: 9,
                                         t: 0,
                                         livetime: 5000,
-                                        side: 0
+                                        side: 0,
+                                        damage: 1
                                     });
+                                    
+                                    soundManager.playsound("shoot2");
                                 }
                             }
                         }
                         else {
+                            //tank
                             if(length(sub(this.cameraPos, sphere.position)) > sphere.activationRadius || sphere.hp <= 0) {
                                 continue;
                             }
+                            if(length(sub(sphere.position, this.cameraPos)) < sphere.radius + 0.5) {
+                                this.hp-= sphere.damage;
+                                if(this.hp <= 0)
+                                    this.resetLevel(false);
+                                map.dynamicSpheres.splice(i, 1);
+                                i--;
+                            }
                             let dir = scale(normalize(sub(sphere.position, this.cameraPos)), -1);
-                            sphere.position = add(sphere.position, scale(dir, (timestamp - this.lastTimestamp)/1000 * sphere.speed));
+                            sphere.position = add(sphere.position, scale(dir, (delta)/1000 * sphere.speed));
                         }
                     }
                     else if(sphere.type == 1) {
@@ -1188,9 +1380,8 @@ class App {
                         if(sphere.t < sphere.livetime) {
                             if(sphere.t > 100) {
                                 //gen particles trail
-                                let spawnrate = 30;
-                                if(Math.floor(sphere.t / spawnrate) != Math.floor((sphere.t + timestamp - this.lastTimestamp) / spawnrate)) {
-                                    debugger;
+                                let spawnrate = 60;
+                                if(Math.floor(sphere.t / spawnrate) != Math.floor((sphere.t + delta) / spawnrate)) {
                                     let sizeFactor = Math.random() * 0.01 + 0.005;
                                     map.particles.push({
                                         position: add(sphere.position, scale([Math.random(), Math.random(), Math.random()], 0.05)),
@@ -1198,14 +1389,15 @@ class App {
                                         refRadius: sizeFactor,
                                         radius: sizeFactor,
                                         t: 0,
-                                        lifetime:(20 - sizeFactor * 1000) * 100
+                                        lifetime:(20 - sizeFactor * 1000) * 100,
+                                        type: "particle"
                                     })
                                 }
                             }
-                            sphere.t+= timestamp - this.lastTimestamp;
+                            sphere.t+= delta;
                             if(sphere.t < 1000) {
                                 //moving forward 1 second
-                                sphere.position = add(sphere.position, scale(sphere.direction, (timestamp - this.lastTimestamp)/1000 * sphere.speed));
+                                sphere.position = add(sphere.position, scale(sphere.direction, (delta)/1000 * sphere.speed));
                             }
                         }
                         if(sphere.side == 1) {
@@ -1222,17 +1414,20 @@ class App {
                             }
                         }
                     }
-                    if(sphere.type == 1 && sphere.side == 0 || sphere.type == 0 && sphere.mob == 1) {
+                    if(sphere.type == 1 && sphere.side == 0) {
                         //check collision with player
                         if(length(sub(sphere.position, this.cameraPos)) < sphere.radius + 0.5) {
                             sphere.t = sphere.livetime;
-                            this.hp--;
+                            this.hp-= sphere.damage;
                             if(this.hp <= 0)
                                 this.resetLevel(false);
                         }
                     }
                 }
+                //particle lifetime
                 for(let i = 0; i < map.particles.length; i++) {
+                    if(map.particles[i].type != "particle")
+                        continue;
                     let particle = map.particles[i];
                     if(particle.t > particle.lifetime) {
                         map.particles.splice(i, 1);
@@ -1241,6 +1436,46 @@ class App {
                     else {
                         particle.t += timestamp - this.lastTimestamp;
                         particle.radius = particle.refRadius * Math.sin(Math.PI/2 * 0.4 + particle.t / 700);
+                    }
+                }
+
+                //item-player collision
+                for(let i = 0; i < map.particles.length; i++) {
+                    if(map.particles[i].type != "item")
+                        continue;
+                    let item = map.particles[i];
+                    debugger;
+                    if(length(sub(item.position, sub(this.cameraPos, [0, 1.5, 0]))) < 1.0) {
+                        let choise = Math.floor(Math.random() * 2);
+                        let id = this.bonuses.length;
+                        switch(choise) {
+                            case 0:
+                                this.hp+= 3;
+                                if(this.hp > 10)
+                                    this.hp = 10;
+                                    
+                                id = this.bonuses.length;
+                                this.bonuses.push("3HP were TAKEN!");
+                                setTimeout(() => {
+                                    this.bonuses.splice(id, 1);
+                                }, 1000);
+                                break;
+                            case 1:
+                                this.infJumps = true;
+                                id = this.bonuses.length;
+                                this.bonuses.push("Infinitive jumps are ACTIVATED!");
+                                setTimeout(() => {
+                                    this.infJumps = false;
+                                    this.bonuses.splice(id, 1);
+                                }, 10000);
+                                break;
+                        }
+                        soundManager.playsound("item");
+                        map.particles.splice(i, 1);
+                        i--;
+                    }
+                    else {
+                        item.color = scale([Math.sin(this.gameTime/300 + 200) * 0.5 + 0.5, Math.sin(this.gameTime/400 + 700) * 0.5 + 0.5, Math.sin(this.gameTime/500) * 0.5 + 0.5], 2000)
                     }
                 }
             }

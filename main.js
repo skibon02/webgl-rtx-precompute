@@ -361,7 +361,8 @@ let soundManager = {
         this.soundIndex++;
     }
 }
-soundManager.sounds['bg'][0].volume = 0.3;
+soundManager.sounds['bg'][0].volume = 0.2;
+soundManager.sounds['bg'][0].loop = true;
 
 let sharedResources = {};
 
@@ -869,8 +870,8 @@ class App {
             }
             else {
                 document.body.style.color = "black";
-                document.querySelector(".hp").innerHTML = "Current lightgroup: " + (this.programs[1].curLightGroup + 1) + "/" + this.lightGroups;
-                document.querySelector(".cubesLit").innerHTML = "Samples: " + this.programs[1].frames[this.programs[1].curLightGroup] * 4;
+                document.querySelector(".details").innerHTML = "Current lightgroup: " + (this.programs[1].curLightGroup + 1) + "/" + this.lightGroups + "<br>" +
+                "Samples: " + this.programs[1].frames[this.programs[1].curLightGroup] * 4;
                 document.querySelector(".mode").innerHTML = "Baking...";
             }
         }).bind(this)();
@@ -907,6 +908,7 @@ class App {
                 'item': [new Audio('sounds/' + map.itemSound)],}
                 soundManager.soundIndex = 0;
                 soundManager.sounds['bg'][0].volume = 0.1;
+                soundManager.sounds['bg'][0].loop = true;
                 soundManager.playsound("bg");
                 
                 map.setUniforms(this.programs[0], false);
@@ -1009,8 +1011,11 @@ class App {
             a.download = "map.json";
             a.href = url;
             a.click();
-            this.currentProgram = 0;
 
+        }
+        if(e.key == "1") {
+            
+            this.currentProgram = 0;
         }
         if(e.key == "2") {
             if(this.currentProgram == 1) {
@@ -1242,7 +1247,6 @@ class App {
                     else {
                         if(isBotColliding) {
                             if(i != 1 && !isBot2Colliding) {
-                                debugger;
                                 this.cameraPos[i] = newPos[i];
                             }
                             else {
@@ -1444,7 +1448,6 @@ class App {
                     if(map.particles[i].type != "item")
                         continue;
                     let item = map.particles[i];
-                    debugger;
                     if(length(sub(item.position, sub(this.cameraPos, [0, 1.5, 0]))) < 1.0) {
                         let choise = Math.floor(Math.random() * 2);
                         let id = this.bonuses.length;

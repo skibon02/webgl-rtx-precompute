@@ -1,4 +1,6 @@
 # raytracing precomputation example in WebGL 2.0
+![image](https://github.com/skibon02/webgl-rtx-precompute/assets/25740003/6991e1b9-c35c-44c1-9cdc-06961d915585)
+
 ### Controls:
 `1` - enter real-time mode
 
